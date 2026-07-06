@@ -11,13 +11,17 @@ permissions:
   contents: read
 
 jobs:
-  drift:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
+      - uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
 
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
+      - name: Bootstrap Devbox
+        run: |
+          eval "$(devbox shellenv --install --init-hook)"  # install devbox packages & execute init hooks
+          echo "$DEVBOX_PACKAGES_DIR/bin" >> "$GITHUB_PATH"  # add devbox's path to PATH
+          eval "$(devbox shellenv)"
 
       - name: Setup Python
         run: |
