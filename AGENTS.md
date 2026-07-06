@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # CLAUDE.md — semver-trust/spec
 
 Agent contract for the SemVer-Trust specification repository. Read fully
@@ -20,6 +21,20 @@ The home of the SemVer-Trust specification and its supporting artifacts:
 
 Document precedence: the spec is normative; the design record explains why.
 If they conflict, the spec wins and the conflict is a defect to report.
+
+## Commands
+
+Environment: `devbox shell` (pins Python, `uv`, `go-task`, and every lint
+tool used below — ADR-016). Outside devbox, `scripts/check-drift.py`
+requires Python 3.11+ (`tomllib`) and nothing else.
+
+- `task verify` — run all repository drift/consistency checks
+  (`scripts/check-drift.py`); this is what "Verification duties" below
+  refers to.
+- `task lint` — run every linter: `ruff check`/`ruff format --check` on
+  `scripts/`, `markdownlint`, `shellcheck`, `actionlint`, `yamlfmt -lint`.
+- `task fmt` — format YAML (`yamlfmt .`).
+- `python3 scripts/check-drift.py` — run the drift checks directly.
 
 ## Hard rules
 
@@ -60,7 +75,7 @@ If they conflict, the spec wins and the conflict is a defect to report.
 ## Verification duties
 
 After any edit to `semver-trust.md` or the design record, verify before
-presenting the change (script these if no CI exists yet):
+presenting the change — run `task verify`, which covers:
 
 - All `§` and ADR cross-references resolve across the spec, the design
   record, and `docs/adr/` (every referenced ADR has a file and index row).

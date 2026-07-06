@@ -1,0 +1,6 @@
+# Local development environment.
+.devbox/
+.venv/
+.envrc
+.env.local
+excalidraw.log

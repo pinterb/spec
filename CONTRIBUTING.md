@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Contributing
 
 SemVer-Trust is in early draft (spec v0.1). Feedback is very welcome —

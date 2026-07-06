@@ -1,0 +1,5 @@
+CHANGELOG.md
+docs/adr/**
+spec/semver-trust.md
+docs/design-record.md
+docs/analysis/2026-07-04-steelman.md

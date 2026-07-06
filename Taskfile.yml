@@ -1,0 +1,60 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+version: "3"
+
+tasks:
+  default:
+    deps: [verify]
+
+  verify:
+    desc: Run all repository drift/consistency checks
+    cmds:
+      - python3 scripts/check-drift.py
+
+  # Executes all linters to ensure code quality and consistency
+  # Expected results: All source files conform to style guidelines
+  # Failure scenarios: Shellcheck warnings, markdown/yaml formatting issues
+  lint:
+    desc: Run linters and report errors
+    cmds:
+      - task: lint:python
+      - task: lint:markdown
+      - task: lint:bash
+      - task: lint:gha
+      - task: lint:yaml
+
+  lint:python:
+    desc: Lint and format-check python scripts
+    cmds:
+      - ruff check scripts/
+      - ruff format --check scripts/
+
+  lint:bash:
+    desc: Run shellcheck on bash scripts
+    cmds:
+      - find scripts -name '*.sh' -exec shellcheck {} +
+
+  lint:markdown:
+    desc: Run markdown linter
+    cmds:
+      - markdownlint .
+
+  lint:gha:
+    desc: Run github actions workflows linter
+    cmds:
+      - actionlint
+
+  lint:yaml:
+    desc: Run yaml linter
+    cmds:
+      - yamlfmt -lint .
+
+  fmt:
+    desc: Format the code
+    cmds:
+      - task: fmt:yaml
+
+  fmt:yaml:
+    desc: Format yaml
+    cmds:
+      - yamlfmt .
