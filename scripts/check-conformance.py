@@ -12,16 +12,28 @@ comparator, the level invariant, the scope/floor/propagation arithmetic, and the
 decision table are re-implemented here from first principles. Agreement between two
 independent implementations is the point.
 
-    python3 scripts/check-conformance.py
+    uv run --group dev python3 scripts/check-conformance.py
 
-Exit code 0 = all vectors valid. Requires Python 3.11+, stdlib only.
+Exit code 0 = all vectors valid. Requires Python 3.11+, ssh-keygen and git on
+PATH (for the cryptographic fixture gates), and the dev dependency group for
+the pinned Draft 2020-12 schema validator (jsonschema) — the one deliberate
+exception to the scripts-run-on-bare-Python rule, recorded in pyproject.toml:
+schema validation at the first-emission freeze must be the real thing, not a
+hand-rolled subset.
 """
 
+import base64
+import binascii
+import hashlib
 import json
 import re
+import subprocess
 import sys
+import tempfile
 from itertools import pairwise
 from pathlib import Path
+
+import jsonschema
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFORMANCE = ROOT / "conformance"
@@ -31,7 +43,9 @@ AGGREGATION = CONFORMANCE / "aggregation.json"
 PROPAGATION = CONFORMANCE / "propagation.json"
 DECISION = CONFORMANCE / "decision.json"
 SIGNATURE = CONFORMANCE / "crypto" / "signature-vectors.json"
-VECTOR_FILES = (LEVELS, PRECEDENCE, AGGREGATION, PROPAGATION, DECISION, SIGNATURE)
+ATTESTATION = CONFORMANCE / "crypto" / "attestations" / "attestation-vectors.json"
+VECTOR_FILES = (LEVELS, PRECEDENCE, AGGREGATION, PROPAGATION, DECISION, SIGNATURE, ATTESTATION)
+ATTESTATIONS_DIR = ATTESTATION.parent
 SPEC = ROOT / "spec" / "semver-trust.md"
 
 AUTHORSHIP = ("agent", "mixed", "ambiguous", "human")
@@ -528,6 +542,311 @@ def check_decision(vectors: list[dict]) -> None:
     check("decision-table-exhaustive", not missing, f"uncovered §6.4 cells: {missing}")
 
 
+# ---- Attestation envelope checks (fixture plan §6) --------------------------
+#
+# Independent re-implementation of the envelope contract: the DSSE shape, the
+# frozen predicate types' required skeleton (a subset of the schemas,
+# re-derived here so the vendored envelopes are gated by a second
+# implementation), SSHSIG verification via ssh-keygen, byte-exact
+# regeneration, and coherence between the release payload and the fixture
+# repository it claims to describe.
+
+PAYLOAD_TYPE = "application/vnd.in-toto+json"
+STATEMENT_TYPE = "https://in-toto.io/Statement/v1"
+ATTESTATION_NAMESPACE = "attestation@semver-trust.dev"
+PREDICATE_REQUIRED = {
+    "https://semver-trust.dev/release/v0.1": (
+        "component",
+        "range",
+        "trust",
+        "commits",
+        "evidence",
+        "decision",
+        "timestamp",
+    ),
+    "https://semver-trust.dev/review/v0.1": (
+        "reviewers",
+        "pull_request",
+        "merge_strategy",
+        "timestamp",
+    ),
+}
+
+
+def _pae(payload_type: str, payload: bytes) -> bytes:
+    t = payload_type.encode()
+    return b"DSSEv1 %d %s %d %s" % (len(t), t, len(payload), payload)
+
+
+def _decode_envelope(vec: dict) -> tuple[dict, bytes] | None:
+    path = ATTESTATIONS_DIR / vec["inputs"]["envelope"]
+    if not path.exists():
+        check(f"attest-envelope-exists-{vec['id']}", False, str(path))
+        return None
+    env = json.loads(path.read_text(encoding="utf-8"))
+    ok = (
+        env.get("payloadType") == PAYLOAD_TYPE
+        and isinstance(env.get("signatures"), list)
+        and len(env["signatures"]) == 1
+        and env["signatures"][0].get("keyid", "").startswith("SHA256:")
+        and env["signatures"][0].get("sig")
+    )
+    check(f"attest-envelope-shape-{vec['id']}", bool(ok), "malformed DSSE envelope")
+    try:
+        payload = base64.b64decode(env["payload"], validate=True)
+    except (KeyError, binascii.Error) as exc:
+        check(f"attest-envelope-payload-{vec['id']}", False, str(exc))
+        return None
+    return env, payload
+
+
+def _statement_shape_ok(payload: bytes) -> bool:
+    try:
+        stmt = json.loads(payload)
+    except json.JSONDecodeError:
+        return False
+    if stmt.get("_type") != STATEMENT_TYPE or not stmt.get("subject"):
+        return False
+    required = PREDICATE_REQUIRED.get(stmt.get("predicateType"))
+    if required is None:
+        return False
+    return all(field in stmt.get("predicate", {}) for field in required)
+
+
+def _schema_validates(payload: bytes) -> bool:
+    """Full Draft 2020-12 validation against the merged schemas — the actual
+    freeze gate. The skeleton check above stays as a second, independent
+    opinion, but only the pinned validator speaks for the schemas."""
+    try:
+        stmt = json.loads(payload)
+    except json.JSONDecodeError:
+        return False
+    schema_file = {
+        "https://semver-trust.dev/release/v0.1": "release-v0.1.json",
+        "https://semver-trust.dev/review/v0.1": "review-v0.1.json",
+    }.get(stmt.get("predicateType"))
+    if schema_file is None:
+        return False
+    schema = json.loads((ROOT / "schemas" / schema_file).read_text(encoding="utf-8"))
+    # FORMAT_CHECKER enforces the schemas' format: "date-time" (RFC 3339 via
+    # the pinned rfc3339-validator). jsonschema silently skips formats whose
+    # checker package is absent, so check_format_gate proves the checker is
+    # armed on every run.
+    validator = jsonschema.Draft202012Validator(
+        schema, format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER
+    )
+    return not list(validator.iter_errors(stmt))
+
+
+def check_format_gate() -> None:
+    """Standing mutation assertion: a payload whose timestamp is not RFC 3339
+    must fail schema validation. Guards both against regression of the format
+    gate and against jsonschema's silent skip-when-unarmed behavior."""
+    payload = json.loads(
+        (ATTESTATIONS_DIR / "payloads" / "release-valid.json").read_text(encoding="utf-8")
+    )
+    payload["predicate"]["timestamp"] = "not-a-date"
+    check(
+        "attest-format-checker-armed",
+        not _schema_validates(json.dumps(payload).encode()),
+        "a non-RFC-3339 timestamp validated: the date-time format checker is not armed",
+    )
+
+
+def _sshsig_verify(env: dict, payload: bytes, registry: Path, signer: str) -> bool:
+    with tempfile.TemporaryDirectory() as tmp:
+        sig = Path(tmp) / "envelope.sig"
+        sig.write_bytes(base64.b64decode(env["signatures"][0]["sig"]))
+        result = subprocess.run(
+            [
+                "ssh-keygen",
+                "-Y",
+                "verify",
+                "-f",
+                str(registry),
+                "-I",
+                signer,
+                "-n",
+                ATTESTATION_NAMESPACE,
+                "-s",
+                str(sig),
+            ],
+            input=_pae(env["payloadType"], payload),
+            capture_output=True,
+            check=False,
+        )
+    return result.returncode == 0
+
+
+def _permissive_registry(workdir: Path) -> Path:
+    """A registry enrolling EVERY fixture key for the attestation namespace
+    under a wildcard principal: verification against it answers 'is this
+    signature cryptographically valid by any fixture key at all?',
+    independently of enrollment — the discriminator between a forged
+    signature and a valid-but-unenrolled one."""
+    lines = []
+    for pub in sorted((CONFORMANCE / "crypto" / "keys").glob("*.pub")):
+        keytype, b64 = pub.read_text().split()[:2]
+        lines.append(f'* namespaces="{ATTESTATION_NAMESPACE}" {keytype} {b64}\n')
+    registry = workdir / "permissive_signers"
+    registry.write_text("".join(lines), encoding="utf-8")
+    return registry
+
+
+def check_attestations(doc: dict) -> None:
+    vectors = [v for v in doc.get("vectors", []) if v.get("kind") == "dsse_attestation"]
+    check("attest-group-nonempty", bool(vectors))
+
+    enrolled_registry = ATTESTATIONS_DIR / "allowed_signers"
+    with tempfile.TemporaryDirectory() as tmp:
+        permissive = _permissive_registry(Path(tmp))
+
+        for vec in vectors:
+            decoded = _decode_envelope(vec)
+            if decoded is None:
+                continue
+            env, payload = decoded
+            expected = vec["expected"]
+
+            shape_ok = _statement_shape_ok(payload)
+            schema_ok = _schema_validates(payload)
+            signer = expected.get("signer", "ci-bot@semver-trust.test")
+            # enrolled: valid signature by a key enrolled in the injected
+            # registry. crypto_valid: valid signature by ANY fixture key —
+            # true for a well-signed envelope from an unenrolled key, false
+            # for a signature that covers different bytes.
+            enrolled = _sshsig_verify(env, payload, enrolled_registry, signer)
+            crypto_valid = enrolled or _sshsig_verify(env, payload, permissive, "anyone")
+
+            if expected["outcome"] == "verified":
+                stmt = json.loads(payload)
+                ok = (
+                    shape_ok
+                    and schema_ok
+                    and enrolled
+                    and stmt.get("predicateType") == expected["predicate_type"]
+                )
+                check(
+                    f"attest-{vec['id']}",
+                    ok,
+                    f"shape={shape_ok} schema={schema_ok} enrolled={enrolled}",
+                )
+                continue
+            want_reason = expected["reason"]
+            got = {
+                # A genuine signature over a payload the schemas reject.
+                "schema_invalid": not schema_ok and not shape_ok and enrolled,
+                # A signature that covers no fixture key's bytes at all —
+                # forgery/tamper, not an enrollment question.
+                "signature_invalid": schema_ok and not crypto_valid,
+                # Cryptographically valid under some fixture key, absent
+                # from the injected registry: distinct from tamper.
+                "unknown_signer": schema_ok and crypto_valid and not enrolled,
+            }.get(want_reason, False)
+            check(
+                f"attest-{vec['id']}",
+                got,
+                f"expected {want_reason}, observed shape={shape_ok} schema={schema_ok} "
+                f"enrolled={enrolled} crypto_valid={crypto_valid}",
+            )
+
+
+def check_attestation_regeneration() -> None:
+    """Frozen-byte tripwire: regeneration must reproduce the vendored bytes."""
+    generator = ATTESTATIONS_DIR / "build-attestation-envelopes.py"
+    with tempfile.TemporaryDirectory() as tmp:
+        result = subprocess.run(
+            ["python3", str(generator), tmp],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            check("attest-regeneration", False, result.stderr.decode(errors="replace"))
+            return
+        drifted = [
+            p.name
+            for p in sorted(Path(tmp).iterdir())
+            if p.read_bytes() != (ATTESTATIONS_DIR / "envelopes" / p.name).read_bytes()
+        ]
+    check(
+        "attest-regeneration",
+        not drifted,
+        f"regenerated envelopes differ from vendored bytes: {drifted}",
+    )
+
+
+def check_release_payload_coherence() -> None:
+    """The release-valid payload must be reproducible from the fixture tree:
+    its tag, commits, and pinned policy digest all exist there (§8.1)."""
+    payload = json.loads(
+        (ATTESTATIONS_DIR / "payloads" / "release-valid.json").read_text(encoding="utf-8")
+    )
+    builder = CONFORMANCE / "crypto" / "build-fixture-repos.sh"
+    with tempfile.TemporaryDirectory() as tmp:
+        result = subprocess.run(["bash", str(builder), tmp], capture_output=True, check=False)
+        if result.returncode != 0:
+            check("attest-release-coherence", False, result.stderr.decode(errors="replace"))
+            return
+        repo = Path(tmp) / "release"
+
+        def rev(ref: str) -> str:
+            out = subprocess.run(
+                ["git", "-C", str(repo), "rev-parse", ref], capture_output=True, check=False
+            )
+            return out.stdout.decode().strip() if out.returncode == 0 else ""
+
+        subject = payload["subject"][0]
+        pred = payload["predicate"]
+
+        # The provenance vector must BE the release range: the exact ordered
+        # git rev-list FROM..TO, oldest first — an omitted commit could hide
+        # a floor-setting T0 change behind a higher claimed own trust.
+        rev_list = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "rev-list",
+                "--reverse",
+                f"{pred['range']['from']}..{pred['range']['to']}",
+            ],
+            capture_output=True,
+            check=False,
+        )
+        range_shas = rev_list.stdout.decode().split()
+
+        # Recompute the per-commit levels and the own floor from the recorded
+        # classes via the same independent §3.2 invariant the level vectors
+        # use. Payload review classes are the counted §3.2 classes.
+        review_class = {"human": "human_distinct", "agent": "agent_independent", "none": "none"}
+        levels = [
+            invariant_level(c["authorship"]["class"], review_class[c["review"]["class"]])
+            for c in pred["commits"]
+        ]
+        floor = min(levels, key=lambda level: int(level[1]))
+
+        checks = {
+            "subject tag": rev(subject["name"] + "^{commit}") == subject["digest"]["gitCommit"],
+            "range from": rev(pred["range"]["from"] + "^{commit}") != "",
+            "range to": rev(pred["range"]["to"] + "^{commit}") == pred["range"]["to"],
+            "provenance vector equals rev-list": [c["sha"] for c in pred["commits"]] == range_shas,
+            "recorded levels match §3.2": [c["level"] for c in pred["commits"]] == levels,
+            "own trust is the floor": pred["trust"]["own"] == floor,
+        }
+        policy_path = pred["decision"]["policy"]["path"]
+        policy_file = repo / policy_path
+        digest = "sha256:" + hashlib.sha256(policy_file.read_bytes()).hexdigest()
+        checks["policy digest"] = (
+            policy_file.exists() and digest == pred["decision"]["policy"]["digest"]
+        )
+        bad = [name for name, ok in checks.items() if not ok]
+    check(
+        "attest-release-coherence",
+        not bad,
+        f"release payload does not match the fixture tree: {bad}",
+    )
+
+
 def main() -> int:
     docs: dict[str, dict] = {}
     for path in VECTOR_FILES:
@@ -549,6 +868,10 @@ def main() -> int:
         check_aggregation(docs[AGGREGATION.name]["vectors"])
         check_propagation(docs[PROPAGATION.name]["vectors"])
         check_decision(docs[DECISION.name]["vectors"])
+        check_attestations(docs[ATTESTATION.name])
+        check_format_gate()
+        check_attestation_regeneration()
+        check_release_payload_coherence()
 
     print(
         f"\n{'OK' if not failures else 'CONFORMANCE VECTORS INVALID'}: "

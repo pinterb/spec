@@ -24,6 +24,7 @@ configuration, or release path.
 | `allowed_signers` | The injected registry: alice/bob/ci-bot enrolled for the `git` namespace; carol enrolled with `valid-before="20251231"` (invalid at the epoch); mallory absent |
 | `build-fixture-repos.sh` | Deterministic fixture-repository builder (see below) |
 | `signature-vectors.json` | Expected verification outcomes, dual-asserted by role tag and pinned SHA |
+| `attestations/` | DSSE attestation fixtures (§6): payloads, vendored frozen envelopes, the attestation-signer registry, generator, and vectors |
 
 ## The fixture epoch and determinism
 
@@ -54,6 +55,38 @@ treat the commit as unverifiable and abort (§5.2, unverifiable ≠ T0), never
 skip it or silently degrade. A "conforms to the v1 crypto vectors" claim
 covers exactly this: SSH verification plus fail-closed behavior on
 everything else.
+
+## Attestation envelopes (fixture plan §6)
+
+`attestations/` carries the DSSE fixtures — the **first emission of the
+frozen v0.1 predicate types**, under the §6 riders: real predicate URIs
+(`https://semver-trust.dev/release/v0.1`, `…/review/v0.1`), fake
+fixture-local subjects (the signed-history commit SHAs and a fixture tag),
+test-only keys, and every non-negative payload validated against the merged
+GO-010 JSON Schemas **before** signing. Unlike the fixture repositories, the
+envelopes are vendored frozen bytes: signed bytes cannot be patched, only
+regenerated (`build-attestation-envelopes.py`), and regeneration breaks
+downstream expectations — treat it as a ceremony, not a build step.
+
+**Signature convention
+([ADR-022](../../docs/adr/0022-attestation-signatures-are-sshsig-over-the-dsse-pae-with-purpose-binding-namespaces.md)).**
+The DSSE pre-authentication encoding (PAE) is signed as an OpenSSH SSHSIG
+with namespace `attestation@semver-trust.dev`; `sig` is the base64 of the
+armored SSHSIG and `keyid` the signer's SHA256 fingerprint — an untrusted
+lookup hint, never a trust anchor. The namespace binds purpose: a commit
+signature (`namespaces="git"`) can never double as an attestation signature,
+and vice versa — which is why `attestations/allowed_signers` is a separate
+registry enrolling only the workflow identity, scoped to the attestation
+namespace.
+
+The release-attestation payloads are backed by the dedicated `release`
+fixture repository: its tree pins `.semver-trust/policy.toml` (the digest in
+the payload is the file's real digest), `v0.1.0` tags the setup commit, the
+release range holds one human and one agent `fix:` commit (declared intent
+PATCH, agreeing with the recorded semantic floor), and the demoted release
+tag `v0.1.1-t0.1` points at the range head — every claim in the payload is
+reproducible from the tree, and `check-conformance.py` gates that coherence
+along with envelope shape, SSHSIG outcomes, and byte-exact regeneration.
 
 ## Provenance
 
