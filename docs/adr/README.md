@@ -27,6 +27,7 @@ are referenced from the specification's design record and elsewhere.
 | ADR-019 | [Trust levels order accountability not risk](0019-trust-levels-order-accountability-not-risk.md) | Accepted (2026-07-04) |
 | ADR-020 | [Incorporate go-semver as reviewed re-commits](0020-incorporate-go-semver-as-reviewed-re-commits.md) | Accepted (2026-07-06) |
 | ADR-021 | [Implementations consume conformance artifacts as vendored digest-pinned copies](0021-implementations-consume-conformance-artifacts-as-vendored-digest-pinned-copies.md) | Accepted (2026-07-06) |
+| ADR-022 | [Attestation signatures are SSHSIG over the DSSE PAE with purpose-binding namespaces](0022-attestation-signatures-are-sshsig-over-the-dsse-pae-with-purpose-binding-namespaces.md) | Accepted (2026-07-11) |
 
 ## Adding an ADR
 

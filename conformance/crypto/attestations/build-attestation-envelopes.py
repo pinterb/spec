@@ -90,7 +90,11 @@ def fingerprint(key: str) -> str:
 
 
 def main() -> int:
-    ENVELOPES.mkdir(exist_ok=True)
+    # An output-directory argument lets the conformance validator regenerate
+    # into a scratch dir and byte-compare against the vendored envelopes —
+    # the frozen-byte drift tripwire.
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else ENVELOPES
+    out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         workdir = Path(tmp)
         for name, (payload_file, key, tamper) in PLAN.items():
@@ -108,7 +112,7 @@ def main() -> int:
                 "payload": base64.b64encode(payload).decode(),
                 "signatures": [{"keyid": fingerprint(key), "sig": sig}],
             }
-            (ENVELOPES / name).write_text(json.dumps(envelope, indent=2) + "\n", encoding="utf-8")
+            (out / name).write_text(json.dumps(envelope, indent=2) + "\n", encoding="utf-8")
             print(f"  {name}  (signed by {key})")
     return 0
 

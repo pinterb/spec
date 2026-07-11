@@ -2,9 +2,9 @@
   "_type": "https://in-toto.io/Statement/v1",
   "subject": [
     {
-      "name": "v0.1.0-t0.1",
+      "name": "v0.1.1-t0.1",
       "digest": {
-        "gitCommit": "9672f0b2f901fe632412c8f21026a7467fba585b"
+        "gitCommit": "cdeff68fe0bb459d6a9e8abcd7e0ef69c47f9f02"
       }
     }
   ],
@@ -12,8 +12,8 @@
   "predicate": {
     "component": "default",
     "range": {
-      "from": null,
-      "to": "9672f0b2f901fe632412c8f21026a7467fba585b"
+      "from": "v0.1.0",
+      "to": "cdeff68fe0bb459d6a9e8abcd7e0ef69c47f9f02"
     },
     "trust": {
       "effective": "T0",
@@ -23,7 +23,7 @@
     },
     "commits": [
       {
-        "sha": "e076050f6714ea6be852fce9c47ff65b05c911b3",
+        "sha": "b036265a50e7c8783e6c8ba91a6f6b325881ab80",
         "level": "T2",
         "authorship": {
           "class": "human",
@@ -38,7 +38,7 @@
         "derivations": []
       },
       {
-        "sha": "80e2be6297494cd2e3c85d2ace1c7579edac3f74",
+        "sha": "cdeff68fe0bb459d6a9e8abcd7e0ef69c47f9f02",
         "level": "T0",
         "authorship": {
           "class": "agent",
@@ -52,27 +52,12 @@
           "class": "none"
         },
         "derivations": []
-      },
-      {
-        "sha": "9672f0b2f901fe632412c8f21026a7467fba585b",
-        "level": "T2",
-        "authorship": {
-          "class": "human",
-          "identity": "bob@semver-trust.test",
-          "trailers": {
-            "Provenance": "human"
-          }
-        },
-        "review": {
-          "class": "none"
-        },
-        "derivations": []
       }
     ],
     "evidence": {
       "blast_radius": {
-        "loc": 3,
-        "files": 3,
+        "loc": 2,
+        "files": 1,
         "score": "low",
         "inputs": {}
       }
