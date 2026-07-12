@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-# CLAUDE.md — semver-trust/spec
+# AGENTS.md — semver-trust/spec
 
 Agent contract for the SemVer-Trust specification repository. Read fully
 before changing anything. The design record's **agent handoff contract**
@@ -12,11 +12,12 @@ The home of the SemVer-Trust specification and its supporting artifacts:
 
 | Path | Role | License |
 |---|---|---|
-| `semver-trust.md` | **Normative specification** (draft v0.1) | CC BY 4.0 |
+| `spec/semver-trust.md` | **Normative specification** (draft v0.3) | CC BY 4.0 |
 | `docs/design-record.md` | Design record: rationale, QA record, handoff contract | CC BY 4.0 |
 | `docs/adr/` | Decision records, one file per ADR, indexed at `docs/adr/README.md` | CC BY 4.0 |
-| `schemas/` (planned) | JSON Schemas for attestation predicates | Apache 2.0 |
-| `conformance/` (planned) | Conformance vectors — the sync contract with implementations | Apache 2.0 |
+| `release/`, `review/` | Predicate-type definitions | CC BY 4.0 |
+| `schemas/` | JSON Schemas for attestation predicates | Apache 2.0 |
+| `conformance/` | Conformance vectors — the sync contract with implementations | Apache 2.0 |
 | `TRADEMARK.md`, `LICENSE`, `LICENSE-APACHE` | Governance and licensing | do not modify |
 
 Document precedence: the spec is normative; the design record explains why.
@@ -51,14 +52,14 @@ requires Python 3.11+ (`tomllib`) and nothing else.
 3. **Never modify `LICENSE`, `LICENSE-APACHE`, or `TRADEMARK.md`** without
    explicit maintainer instruction in the current session. The license
    files are verbatim canonical texts; verbatim-ness is load-bearing.
-4. **Do not resolve the open placeholders** — the spec's §12.6 naming
-   caveat and the `<spec-domain>` predicate URI — until the maintainer
-   confirms the project domain is registered. Resolving them is the
-   planned spec v0.2 pass, not a cleanup task.
+4. **Do not change an emitted predicate version in place.** The project
+   domain is registered and the v0.1 release/review predicates have been
+   emitted. Incompatible wire or interpretation changes require a new
+   predicate version plus coordinated schema and conformance updates.
 5. **Do not restructure or renumber spec sections** without instruction.
    `§` cross-references span both documents and external discussion;
    renumbering breaks them silently.
-6. Normative changes to `semver-trust.md` require a spec version bump and
+6. Normative changes to `spec/semver-trust.md` require a spec version bump and
    a matching design-record update (new ADR or QA-record entry). Editorial
    changes (typos, wording without meaning change) do not.
 
@@ -74,7 +75,7 @@ requires Python 3.11+ (`tomllib`) and nothing else.
 
 ## Verification duties
 
-After any edit to `semver-trust.md` or the design record, verify before
+After any edit to `spec/semver-trust.md` or the design record, verify before
 presenting the change — run `task verify`, which covers:
 
 - All `§` and ADR cross-references resolve across the spec, the design

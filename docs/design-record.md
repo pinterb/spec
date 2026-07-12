@@ -1,9 +1,10 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # SemVer-Trust — Supporting Discussion & Design Record
 
-**Companion to:** the SemVer-Trust specification (normative) — canonical location `semver-trust.md` in `github.com/semver-trust/spec`; drafted in this workspace as `semver-trust-spec-v0.1.md`
+**Companion to:** the SemVer-Trust specification (normative) — canonical
+location `spec/semver-trust.md` in `github.com/semver-trust/spec`
 **This document:** explanatory — rationale, rejected alternatives, review findings, open threads, agent handoff
-**Date:** 2026-07-04 · **Revision:** r5 (see revision history)
+**Date:** 2026-07-12 · **Revision:** r6 (see revision history)
 **Audience:** Both human engineering teams, and future AI agents continuing this work
 
 ---
@@ -17,7 +18,11 @@ Two sentences carry the entire design; everything else is derivation:
 1. **A version bump is a compatibility claim; a trust level is the strength of evidence behind the claim.**
 2. **Trust levels measure attested accountability, not keystrokes.**
 
-Current state: spec draft v0.1 complete and internally verified, committed to `github.com/semver-trust/spec` as `semver-trust.md`. Naming and repository topology are decided (ADR-013: the scheme is **SemVer-Trust**), and the licensing/control strategy is decided (ADR-014: Apache 2.0 for code and vectors, CC BY 4.0 for prose, with control carried by trademark + conformance gating, governance, and copyright). No implementation exists yet.
+Current state: **spec draft v0.3** is published at `spec/semver-trust.md`;
+release/review predicate definitions, schemas, core and cryptographic
+conformance vectors, and consistency checks are committed. The official Go
+implementation consumes the vendored conformance contract and has published
+v0.1.0 and v0.2.0 under the scheme. Decisions are recorded through ADR-026.
 
 ## 2. Project origin and intent
 
@@ -29,7 +34,7 @@ Current state: spec draft v0.1 complete and internally verified, committed to `g
   3. Path-scoped trust is required, because monorepos remain common in a post-AI world (agents favor them: context locality, atomic cross-cutting changes, single enforcement point).
 - **Positioning:** the scheme sits beside SLSA/sigstore supply-chain work — human-legible, embedded in the version identifier, focused on *first-party* code provenance — rather than competing with them. The spec is deliberately separable from any implementation (the way SemVer-the-spec is separate from tools), so the idea can outlive one repo.
 - **Strategic context (org-internal):** path-scoped trust produces a trust heatmap of the codebase over time — which zones are agent-run vs human-tended and how that boundary moves. This is effectively a per-scope **Presence** measurement (TAC KPI framework) with cryptographic backing instead of survey data: it converts "how much do we trust AI-written code" from a philosophy debate into a dashboard. Expect this to matter for leadership storytelling independent of the tool's engineering value.
-- **Naming:** explored `trustver`, `vouch`, `attest`, `semver-agent`, `credence`, `lineage`, and others; leading candidates were `vouch` (evocative, works in a sentence) and `trustver` (discoverable). Decision was deferred at drafting time; **resolved by ADR-013** — the working name became the name, carried by the `github.com/semver-trust` organization. The spec's §12.6 placeholder caveat and the `<spec-domain>` predicate-URI placeholder remain, to be cleaned up in a spec v0.2 pass (§8).
+- **Naming:** explored `trustver`, `vouch`, `attest`, `semver-agent`, `credence`, `lineage`, and others; leading candidates were `vouch` (evocative, works in a sentence) and `trustver` (discoverable). Decision was deferred at drafting time; **resolved by ADR-013** — the working name became the name, carried by the `github.com/semver-trust` organization. The `semver-trust.dev` domain was registered and the predicate URIs were bound in spec v0.2 (§8).
 
 ## 3. Foundational principles and their derivations
 
@@ -53,8 +58,8 @@ Decisions live as **one file per ADR under `docs/adr/`** (maintainer convention)
 indexed with statuses at `docs/adr/README.md`. Identifiers (ADR-001…) are stable
 regardless of location; every ADR reference in this document resolves there.
 Field format: Status / Date / Decision / Rationale / Rejected / Revisit trigger
-(+ Supersedes where applicable). Unless a file states otherwise, status is
-Accepted (draft v0.1).
+(+ Supersedes where applicable). The ADR index is authoritative for current
+status.
 
 | ADR | Title |
 |---|---|
@@ -77,6 +82,13 @@ Accepted (draft v0.1).
 | ADR-017 | Roadmap reorders around demand-side artifacts and keystone instrumentation |
 | ADR-018 | Verification interfaces accept injectable trust roots and clock from day one |
 | ADR-019 | Trust levels order accountability, not risk |
+| ADR-020 | Incorporate go-semver as reviewed re-commits |
+| ADR-021 | Implementations consume conformance artifacts as vendored digest-pinned copies |
+| ADR-022 | Attestation signatures are SSHSIG over the DSSE PAE with purpose-binding namespaces |
+| ADR-023 | Merge commits are created locally, signed and trailered, never by web-flow |
+| ADR-024 | Adoption boundary: pre-scheme history is exempt, disclosed, and policy-pinned (superseded by ADR-026) |
+| ADR-025 | Self-review exclusion prevents double-counting, not first-counting |
+| ADR-026 | Adoption boundary reaffirmed: the motivating lost key was the GitHub web-flow signer |
 
 ## 5. Design review findings (QA record)
 
@@ -105,9 +117,9 @@ The spec was reviewed *before and after* drafting; recording findings so future 
 
 **Adversarial (steelman) review (2026-07-04):** full analysis at `docs/analysis/2026-07-04-steelman.md`. Keystone identified: E2 (trust↔outcome correlation), buffered by V1 (accountability's independent value) — collapse requires the conjunction, which held under pressure. Strongest internal counterargument found: the security-patch velocity conflict under `demote` (queued as a spec §12 open question rather than quietly patched). Dispositions: roadmap reorder (ADR-017), injectable trust roots/clock (ADR-018), P6 (ADR-019), spec v0.2 queue expansion. Standing predictions recorded in the analysis §5: Goodhart equilibrium → "accountability infrastructure first" framing; mixed-authorship decay of the authorship axis toward reviewer-counting; null-E2 repositioning path.
 
-## 6. External facts relied upon (re-verify before implementation)
+## 6. External facts relied upon (re-verify before relying)
 
-The design leans on ecosystem behaviors that were asserted from knowledge, not re-checked against live documentation during this session. They are stable and high-confidence, but any agent beginning implementation MUST re-verify against current docs — several are load-bearing:
+The design leans on ecosystem behaviors that were asserted from knowledge, not re-checked against live documentation during the founding session. Any agent extending the specification or implementation MUST re-verify them against current docs — several are load-bearing:
 
 | # | Fact relied upon | Load-bearing for |
 |---|---|---|
@@ -129,34 +141,34 @@ The design leans on ecosystem behaviors that were asserted from knowledge, not r
 | Artifact | Status |
 |---|---|
 | GitHub organization `semver-trust` | **Exists** (created July 2026). Pending: `.github` profile repo/README as the org front door. |
-| `spec` repository | **Exists**; contains the normative spec as `semver-trust.md` (content = draft v0.1). Design record, schemas, conformance vectors, `TRADEMARK.md`, and the dual-license arrangement not yet committed. |
-| Normative spec | **Draft v0.2 produced 2026-07-04** (pending commit): resolves §12.6 and `<spec-domain>`, adds P6 + §3.1 clarification, mirrors ADR-015 into §4.4, adds §12.7–12.8; full delta in spec Appendix C; mechanical verification re-run clean. v0.1 baseline per §5: 12 sections + 2 appendices (trust model, provenance capture, aggregation/propagation, release evaluation + decision table, tag grammar, registry projections, attestation predicate sketch, TOML policy reference, verification algorithm, threat model, open questions, worked example, level grid). Placeholders remaining for the v0.2 pass: §12.6 naming caveat, `<spec-domain>` predicate URI. |
-| This document | Explanatory companion, revision r2. |
-| `TRADEMARK.md` | **Drafted** (ecosystem naming permitted with unofficial-status disclaimer; self-verified conformance claims; fork-rename rule; attribution≠affiliation clause; common-law status stated plainly). Pending commit; deserves IP-counsel review if traction arrives. |
-| `semver-trust-go` repository | Planned per ADR-013; creation not yet confirmed. Implementation **not started**. |
-| Formal JSON Schemas for predicates | Not started (spec §8.1 predicate is an illustrative sketch). |
-| Review-attestation predicate (`…/review/v1`) | Named in spec §4.3; schema not drafted. |
-| Conformance suite | Not started; elevated to *sync contract* between repos (ADR-013). |
-| Predicate-type domain | **Registered: `semver-trust.dev`** (2026-07-04). Predicate URIs bound in spec v0.2 (§4.3 review, §8.1 release, both at `/…/v0.1`). Pending: GitHub Pages on the `spec` repo so predicate URLs resolve. |
+| `spec` repository | **Active**; contains the draft v0.3 normative spec, design record, ADRs through ADR-026, predicate definitions, schemas, conformance vectors, consistency checks, governance files, and the dual-license arrangement. |
+| Normative spec | **Draft v0.3** at `spec/semver-trust.md`; Appendix C and D record the v0.2 and v0.3 deltas. |
+| This document | Explanatory companion, revision r6. |
+| `TRADEMARK.md` | **Committed**; ecosystem naming, conformance claims, fork naming, and affiliation rules are documented. IP-counsel review remains advisable if traction arrives. |
+| `semver-trust-go` repository | **Implemented**; consumes digest-pinned conformance artifacts and has published v0.1.0 and v0.2.0 under the scheme. |
+| Formal JSON Schemas for predicates | **Emitted at v0.1** under `schemas/`, with Apache 2.0 licensing and closed-object validation. |
+| Release/review predicate definitions | **Published at v0.1** under `release/` and `review/`; the first DSSE fixture emission occurred in spec PR #16. |
+| Conformance suite | **Implemented**; covers level assignment, precedence, propagation, aggregation, decisions, commit signatures, and DSSE attestation verification. |
+| Predicate-type domain | **Registered and wired:** `semver-trust.dev`; v0.1 release and review predicate definitions are present in the Pages source. |
 | Name | **Decided:** SemVer-Trust (ADR-013). |
-| Licensing & control | **Decided** (ADR-014); file arrangement pending per its implementation notes. CLA-vs-DCO deferred until the first external contribution. |
-| Old `go-semver` repo | To be retired; migration/deprecation story not designed. |
+| Licensing & control | **Implemented** per ADR-014: CC BY 4.0 prose, Apache 2.0 machine-consumable artifacts, directory-local Apache license copies, and trademark-based conformance control. CLA-vs-DCO remains deferred until the first external contribution. |
+| Old `go-semver` repo | Supersession notice tracked in `semver-trust-go` issue #60. |
 
 ## 8. Open threads and next steps
 
 **Pressure-test with the team first** (predicted adoption-friction points, in order):
 
-1. **Unverifiable → fail** (ADR-008, spec §5.2/§10): correct security posture, brutal on repos with pre-scheme history. Likely needs an *adoption boundary* concept — a designated first-verified tag before which history is exempt. Not yet designed.
+1. ~~**Unverifiable → fail adoption pressure**~~ — the adoption boundary was designed and implemented through ADR-024, then reaffirmed with its motivating history corrected by ADR-026.
 2. **No de-minimis** (P3, spec §5.1): expect "why did a typo fix demote our release" complaints; the answer is derivation rules (add a formatter/docs derivation) — but docs-only changes have no derivation story yet. Possible gap: a `docs`-scope carve-out via scope weights vs. flooring. Undecided.
 3. **Meta-path hard-fail** (ADR-007): interacts badly with agents that helpfully "fix" CI workflows mid-task. Contributor policy and agent contracts (CLAUDE.md) must warn agents off meta-paths explicitly.
 
 **Then, roughly in order:**
 
-4. ~~Decide the name; register the predicate-type domain~~ (done — ADR-013; `semver-trust.dev` registered 2026-07-04). Remaining: GitHub Pages on the `spec` repo with the custom domain so predicate URLs resolve to their definitions.
-5. Populate the `spec` repo: layout (`spec/` or root spec file, `schemas/`, `conformance/`, `docs/`), dual-license arrangement per ADR-014 implementation notes, commit `TRADEMARK.md` and this design record, create the org `.github` profile repo.
-6. ~~Spec v0.2 pass~~ (executed 2026-07-04; delta in spec Appendix C; steelman Appendix A discharged). Remaining from the batch: formalize the JSON Schemas for the release and review predicates (`schemas/`, Apache 2.0), now against the bound URIs.
-7. Build the **conformance suite** (level-assignment matrix as data, precedence vectors, fixture repositories with expected verification outcomes and attestations). Precedes serious implementation work because it *is* the implementation's acceptance test and the cross-repo sync contract (ADR-013).
-8. Reference implementation in `semver-trust-go` (richest evidence-provider story: `apidiff`, coverage, `go list` graph adapter): CLI surface sketched as `verify` (walk range, report per-commit provenance), `release` (evaluate + tag + attest), `policy` (validate config); plugin interfaces for evidence providers, graph adapters, registry projections. It MUST release *itself* with trust-tagged releases as the flagship demo — which promotes the *adoption boundary* gap (pressure-test #1) from open thread to first implementation requirement. Verification interfaces accept injectable trust roots and an injectable clock from day one (ADR-018). At equal priority, per ADR-017: a minimal demand-side consumer (a `verify` GitHub Action + README trust badge) and retrospective trust profiling of existing repositories — the E5 fix and the E2 test, respectively.
+4. ~~Decide the name; register and wire the predicate-type domain~~ (done — ADR-013; `semver-trust.dev` registered and predicate definition pages committed).
+5. ~~Populate the `spec` repository and implement its dual-license arrangement~~ (done; org `.github` profile remains optional follow-up work).
+6. ~~Execute the spec v0.2 pass and formalize v0.1 release/review schemas~~ (done; spec Appendix C records the delta, and the schemas were first emitted in PR #16).
+7. ~~Build the core and cryptographic conformance suites~~ (done; ADR-021 defines their digest-pinned consumption contract).
+8. ~~Build and dogfood the Go reference implementation~~ (v0.1.0 and v0.2.0 released under the scheme). Remaining per ADR-017: a minimal demand-side consumer (`verify` GitHub Action + README trust badge) and retrospective trust profiling — the E5 artifact and E2 test, respectively.
 9. Dogfood target #2: Brad's Go API starter repo (oapi-codegen) — it already has the human-reviewed-contract philosophy and a `CLAUDE.md` agent contract; its OpenAPI derivation rule is the flagship ADR-004 demonstration.
 10. Design the `go-semver` retirement/redirect story (deprecation notice pointing at the org).
 11. Revisit spec §12 open questions as evidence accumulates (T1 efficacy, trust decay, SLSA mapping, cross-repo propagation). Note the irony recorded for honesty: the project defining transitive trust for monorepos chose a polyrepo for itself, so cross-repo trust (spec §12.4) will eventually be felt firsthand.
@@ -165,13 +177,13 @@ The design leans on ecosystem behaviors that were asserted from knowledge, not r
 
 Instructions to any agent (or human) resuming this work:
 
-1. **Document precedence:** the spec — `semver-trust.md` in `github.com/semver-trust/spec` — is normative. This document explains *why*; where they conflict, the spec wins and the conflict should be reported as a defect.
+1. **Document precedence:** the spec — `spec/semver-trust.md` in `github.com/semver-trust/spec` — is normative. This document explains *why*; where they conflict, the spec wins and the conflict should be reported as a defect.
 2. **Do not re-litigate rejected alternatives** (ADR "Rejected" entries) without *new evidence or a changed requirement*. In particular: build-metadata encoding (ADR-001), de-minimis exemptions (P3/ADR-004), unverifiable→T0 (ADR-008), and inflation-as-only-strategy (ADR-005) were each rejected for stated reasons that have not changed.
 3. **Change protocol:** decisions change by *superseding* — create `docs/adr/NNNN-slug.md` with the next number and a `Supersedes:` field; never edit an accepted ADR's Decision/Rationale/Rejected content in place (the sole permitted edit to a superseded file is its Status line, set to `Superseded by ADR-NNN`). Update the `docs/adr/README.md` index. Mirror material changes into the spec with a version bump of the spec itself.
 4. **Before implementing anything**, re-verify §6 facts against current ecosystem documentation; several postdate nothing but all predate you.
 5. **Terminology discipline:** use the spec's §2 terms exactly (own trust vs effective trust; scope vs component; channel; accountable human). Drift here has already been the source of one caught bug (§5.8).
 6. **Honesty clauses are load-bearing:** P2 (accountability, not keystrokes) and P4 (degrade honestly) are commitments, not caveats. Any feature that quietly claims more than the evidence supports — e.g., inferring authorship the signatures can't prove, or waiving evidence where a differ is missing — violates the design's core defense against being discredited.
-7. **Where to start coding:** spec §10 (verification algorithm) is the implementation skeleton; ADR-011 defines the plugin seams; §8 item 8 above sketches the CLI. Start with `verify` against a synthetic fixture repo before touching `release`.
+7. **Implementation coordination:** the conformance artifacts are the cross-repository contract; implementations consume vendored, digest-pinned copies under ADR-021. Change the specification and conformance source first, then update implementation copies and behavior.
 8. **Context that won't be in the repo:** the founding conversation reframed "AI blast radius should force a breaking change" into the semantic-floor/evidence-ceiling split (ADR-005) — if a stakeholder asks why big AI changes don't bump MAJOR, that reframing (P1) is the answer, and `strategy = "inflate"` exists for orgs that insist.
 9. **Agent-contract files:** `AGENTS.md` is the canonical per-repo agent contract — vendor-neutral, matching the project's own thesis — and `CLAUDE.md` is a two-line pointer for tools that read only that file. Replicate the pair in every repository.
 
@@ -193,6 +205,10 @@ Instructions to any agent (or human) resuming this work:
 12. **Environment tooling evaluation** (devbox/direnv vs. 2026 alternatives; mise Go-issue follow-ups dissolved on inspection) → ADR-015 (self-contained derivation pins — extends P5 to verification portability) and ADR-016 (outcome-based convention, devbox maintainer default, explicit mise trigger).
 13. **Steelman analysis** (maintainer-directed) of specification and codification strategy → `docs/analysis/2026-07-04-steelman.md`; ADR-017 (demand-side artifacts + keystone instrumentation), ADR-018 (injectable trust roots/clock), ADR-019 (P6); spec v0.2 queue expanded; r4.
 14. **Domain registered** (`semver-trust.dev`, 2026-07-03) → **spec v0.2 pass executed** per §8.6: placeholders resolved, P6 and ADR-015 mirrored, §12.7–12.8 added, predicate URIs bound (review predicate aligned `v1`→`v0.1` pre-first-attestation); verification suite re-run clean; this revision (**r5**).
+15. **Schemas and conformance core:** v0.1 release/review JSON Schemas, level/precedence vectors, aggregation/decision vectors, and digest-pinned consumption landed (ADR-020–ADR-021).
+16. **Cryptographic conformance:** purpose-bound SSHSIG verification and DSSE predicate fixtures landed; the DSSE fixture PR was the first v0.1 predicate emission (ADR-022).
+17. **Repository provenance controls:** locally signed/trailered merge commits and reviewable branch-ruleset artifacts landed (ADR-023).
+18. **Reference implementation dogfood and spec v0.3:** the Go implementation released v0.1.0 and v0.2.0 under the scheme; adoption-boundary and self-review pressure produced ADR-024–ADR-026 and spec v0.3.
 
 ---
 
@@ -205,3 +221,4 @@ Instructions to any agent (or human) resuming this work:
 | r3 | 2026-07-04 | ADRs extracted verbatim to `docs/adr/` (one file each + index); §4 converted to pointer + title index; §9 change protocol updated with file-per-ADR mechanics; document destined for `docs/design-record.md`; timeline 9 amended for root-file completion, entry 10 added. |
 | r4 | 2026-07-04 | Steelman review integrated: P6 added to §3; §5 adversarial-review block; §6 fact 12; §4 index rows ADR-015…019; §8 items 6 and 8 expanded (v0.2 queue with Appendix-A pointers; ADR-017/018 requirements); §9 item 9 (AGENTS.md convention); timeline 11–13. |
 | r5 | 2026-07-04 | Domain registration recorded; spec v0.2 pass marked executed (§7 rows, §8 items 4 and 6); timeline 14. |
+| r6 | 2026-07-12 | Synchronized the canonical spec path, draft v0.3 and implementation status, ADR index through ADR-026, artifact table, completed roadmap items, handoff guidance, and timeline 15–18. |
