@@ -113,6 +113,19 @@ accountability aggregation and routing**, not a universal trust or risk score.
 | F-12 | P1 | Conformance is green but not adversarially complete | Add raw-evidence and negative end-to-end vectors |
 | F-13 | P1 | Maintainer-facing state documentation drifted materially | Synchronize it and check future drift mechanically |
 
+Disposition is coordinated in [issue #26][issue-umbrella]. Focused tracking:
+
+- F-01: [issue #27][issue-range]
+- F-02: [issue #35][issue-policy]
+- F-03 and F-09: [issue #31][issue-threshold]
+- F-04 and F-05: [issue #32][issue-review]
+- F-06: [issue #34][issue-derivation]
+- F-07 and part of F-10: [issue #33][issue-predicate]
+- F-08: [issue #30][issue-ecosystem]
+- F-10 and F-11: [issue #28][issue-slsa]
+- F-12: [issue #29][issue-conformance]
+- F-13: [PR #24][pr-state]
+
 ## 5. Protocol blockers
 
 ### F-01 — Release intervals and predecessor continuity
@@ -457,7 +470,18 @@ provenance standards.
 [go-verify]: https://github.com/semver-trust/semver-trust-go/blob/f975d696a15d9d80f9b790ad76090515b189af85/internal/verify/verify.go#L92-L151
 [go-walk]: https://github.com/semver-trust/semver-trust-go/blob/f975d696a15d9d80f9b790ad76090515b189af85/internal/vcs/walk.go#L28-L75
 [in-toto-statement]: https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md
+[issue-conformance]: https://github.com/semver-trust/spec/issues/29
+[issue-derivation]: https://github.com/semver-trust/spec/issues/34
+[issue-ecosystem]: https://github.com/semver-trust/spec/issues/30
+[issue-policy]: https://github.com/semver-trust/spec/issues/35
+[issue-predicate]: https://github.com/semver-trust/spec/issues/33
+[issue-range]: https://github.com/semver-trust/spec/issues/27
+[issue-review]: https://github.com/semver-trust/spec/issues/32
+[issue-slsa]: https://github.com/semver-trust/spec/issues/28
+[issue-threshold]: https://github.com/semver-trust/spec/issues/31
+[issue-umbrella]: https://github.com/semver-trust/spec/issues/26
 [npm-tags]: https://docs.npmjs.com/adding-dist-tags-to-packages/
 [pep440]: https://peps.python.org/pep-0440/#handling-of-pre-releases
+[pr-state]: https://github.com/semver-trust/spec/pull/24
 [slsa-parsing]: https://slsa.dev/spec/v1.0/provenance
 [slsa-source]: https://slsa.dev/spec/v1.2/source-requirements
