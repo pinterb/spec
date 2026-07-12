@@ -28,6 +28,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SPEC = ROOT / "spec" / "semver-trust.md"  # adjust if the spec moves
 DESIGN_RECORD = ROOT / "docs" / "design-record.md"
 ADR_DIR = ROOT / "docs" / "adr"
+README = ROOT / "README.md"
+CONTRIBUTING = ROOT / "CONTRIBUTING.md"
+AGENT_CONTRACT = ROOT / "AGENTS.md"
 DOMAIN = "https://semver-trust.dev"
 APACHE_DIRS = {"schemas", "conformance", "scripts"}
 # Directories that are not repository content: virtualenvs, vendored deps,
@@ -146,7 +149,61 @@ def check_spec() -> None:
     check("spec-precedence-claims", prec_ok)
 
 
-# ---- 3. Predicate pages ----------------------------------------------------
+# ---- 3. Project-state documentation ---------------------------------------
+def check_project_state() -> None:
+    spec_text = SPEC.read_text(encoding="utf-8") if SPEC.exists() else ""
+    version_match = re.search(r"^\*\*Draft v(\d+\.\d+)\*\*$", spec_text, re.M)
+    check("project-state-spec-version", version_match is not None)
+    if version_match is None:
+        return
+
+    version = version_match.group(1)
+    readme = README.read_text(encoding="utf-8") if README.exists() else ""
+    contributing = CONTRIBUTING.read_text(encoding="utf-8") if CONTRIBUTING.exists() else ""
+    agents = AGENT_CONTRACT.read_text(encoding="utf-8") if AGENT_CONTRACT.exists() else ""
+    design = DESIGN_RECORD.read_text(encoding="utf-8") if DESIGN_RECORD.exists() else ""
+
+    check(
+        "project-state-readme-version",
+        f"specification — draft v{version}" in readme and f"**v{version} working draft**" in readme,
+    )
+    check("project-state-contributing-version", f"spec v{version}" in contributing)
+    check(
+        "project-state-agent-contract",
+        f"`spec/semver-trust.md` | **Normative specification** (draft v{version})" in agents
+        and "`schemas/` (planned)" not in agents
+        and "`conformance/` (planned)" not in agents,
+    )
+    check(
+        "project-state-design-record",
+        "location `spec/semver-trust.md`" in design
+        and f"Current state: **spec draft v{version}**" in design,
+    )
+
+    stale_status = [
+        phrase
+        for phrase in (
+            "No implementation exists yet.",
+            "Implementation **not started**",
+            "Formal JSON Schemas for predicates | Not started",
+            "Conformance suite | Not started",
+        )
+        if phrase in design
+    ]
+    check("project-state-no-stale-artifact-status", not stale_status, ", ".join(stale_status))
+
+    adr_files = {
+        f"ADR-{int(path.name[:4]):03d}" for path in ADR_DIR.glob("0*.md") if path.name[:4].isdigit()
+    }
+    design_adrs = set(re.findall(r"^\| (ADR-\d{3}) \|", design, re.M))
+    check(
+        "project-state-design-record-adrs",
+        design_adrs == adr_files,
+        f"missing={sorted(adr_files - design_adrs)}, extra={sorted(design_adrs - adr_files)}",
+    )
+
+
+# ---- 4. Predicate pages ----------------------------------------------------
 def check_predicates() -> None:
     spec_text = SPEC.read_text(encoding="utf-8") if SPEC.exists() else ""
     for kind in ("release", "review"):
@@ -174,7 +231,7 @@ def check_predicates() -> None:
             )
 
 
-# ---- 4. ADR discipline -----------------------------------------------------
+# ---- 5. ADR discipline -----------------------------------------------------
 def check_adrs() -> None:
     files = sorted(ADR_DIR.glob("0*.md")) if ADR_DIR.exists() else []
     check("adr-dir", bool(files))
@@ -205,7 +262,7 @@ def check_adrs() -> None:
     check("adr-refs-resolve", refs <= ids, f"dangling: {sorted(refs - ids)}")
 
 
-# ---- 5. Links --------------------------------------------------------------
+# ---- 6. Links --------------------------------------------------------------
 def check_links() -> None:
     rooty, broken = [], []
     for p in md_files():
@@ -223,7 +280,7 @@ def check_links() -> None:
     check("links-relative-resolve", not broken, "; ".join(broken))
 
 
-# ---- 6. Licensing arrangement ----------------------------------------------
+# ---- 7. Licensing arrangement ----------------------------------------------
 def check_licenses() -> None:
     lic = ROOT / "LICENSE"
     if lic.exists():
@@ -242,7 +299,7 @@ def check_licenses() -> None:
             check(f"license-copy-in-{d}", (ROOT / d / "LICENSE").exists())
 
 
-# ---- 7. Pages / domain wiring ----------------------------------------------
+# ---- 8. Pages / domain wiring ----------------------------------------------
 def check_site() -> None:
     cname = ROOT / "CNAME"
     check(
@@ -255,6 +312,7 @@ def check_site() -> None:
 CHECKS = (
     check_spdx,
     check_spec,
+    check_project_state,
     check_predicates,
     check_adrs,
     check_links,
