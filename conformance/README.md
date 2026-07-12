@@ -8,16 +8,17 @@ reference implementation treats them as acceptance tests, and any other implemen
 passing them.
 
 The Go reference implementation currently implements the draft v0.3 vector
-set. The v0.4 range and policy-transition groups in this revision are the source
-contract for its next coordinated, digest-pinned update.
+set. The v0.4 range, policy-transition, and version-ancestry groups in this
+revision are the source contract for its next coordinated, digest-pinned update.
 
 Each vector is derived directly from a normative section of the spec and carries a `spec` back-reference to
 it. The vectors in this directory cover **level assignment** (§3.2, §3.3, §4.1–§4.2), **version precedence
 and tag grammar** (§7.1, §7.2), **aggregation** (§5.1–§5.2 scope partitioning and floors, §5.4 meta-paths,
 with §4.4 derivation re-leveling as it feeds §5.2), **transitive propagation** (§5.3, including SCC
-collapse), **release intervals and predecessor continuity** (§5.2), **policy transitions** (§5.4), and
-**release decisions** (§6.1–§6.4 with §7.1 encoding). Every step of the spec's Appendix A worked example is
-reproduced as a vector (ids containing `appendix-a`). Cryptographic verification fixtures —
+collapse), **release intervals and predecessor continuity** (§5.2), **policy transitions** (§5.4),
+**authenticated version ancestry** (§7.5), and **release decisions** (§6.1–§6.4 with §7.1 encoding). Every
+step of the spec's Appendix A worked example is reproduced as a vector (ids containing `appendix-a`).
+Cryptographic verification fixtures —
 vendored test keys, the allowed-signers registry, deterministically built fixture repositories, and SSH
 signature vectors (§4.2, §10 step 5) — live under [`crypto/`](crypto/README.md), which also documents the v1
 capability limitation (SSH-only, with fail-closed behavior on other key families proven by vector).
@@ -32,6 +33,7 @@ capability limitation (SSH-only, with fail-closed behavior on other key families
 | `propagation.json` | Effective-trust propagation vectors over dependency graphs (incl. SCCs) | Apache 2.0 |
 | `decision.json` | §6.4 decision-table vectors: trust × blast × strategy → channel/version | Apache 2.0 |
 | `range.json` | Inception/adoption/recurring interval and predecessor-chain vectors | Apache 2.0 |
+| `version-ancestry.json` | Genesis/recurring/superseding version-state and exact-tag vectors | Apache 2.0 |
 | `policy-transition.json` | Bootstrap, previous-policy, meta-path, and delayed-activation vectors | Apache 2.0 |
 | `crypto/` | Cryptographic fixtures: vendored test keys, allowed-signers registry, deterministic fixture-repo builder, SSH signature vectors (see `crypto/README.md`) | Apache 2.0 |
 | `check-conformance.py` (in `../scripts/`) | Independent validator for these files (self-check, not the harness) | Apache 2.0 |
@@ -60,6 +62,11 @@ vector envelope is pinned to spec draft 0.4. Passing those vectors proves
 v0.1 sufficient for a v0.4 release-conformance claim; §8.1 requires a successor
 predicate before v0.4 release emission.
 
+The range, policy-transition, and version-ancestry files isolate independent
+dimensions for precise failures. Their authority fixtures are projections, not
+three alternative wire formats: a real accepted successor combines every
+source-interval, policy, and version-state field required by §8.1.
+
 ## Vector format
 
 Every vector file shares an envelope:
@@ -78,7 +85,7 @@ Every vector, regardless of file, has these common fields:
 | Field | Type | Meaning |
 |---|---|---|
 | `id` | string | Stable, unique identifier, e.g. `levels/matrix/agent-none`. Never reused or repurposed. |
-| `kind` | string | Selects the consumption rule: `matrix`, `classify`, `precedence`, `grammar`, `scope_partition`, `scope_floor`, `meta_path`, `propagation`, `release_range`, `policy_transition`, or `decision`. |
+| `kind` | string | Selects the consumption rule: `matrix`, `classify`, `precedence`, `grammar`, `scope_partition`, `scope_floor`, `meta_path`, `propagation`, `release_range`, `version_ancestry`, `policy_transition`, or `decision`. |
 | `description` | string | Human-readable intent; editorial, not asserted. |
 | `spec` | string | Back-reference to the governing spec section, e.g. `§3.2`. Never empty. |
 
@@ -216,6 +223,39 @@ is the normative assertion, while fixture order serializes `expected.commits`.
 | `expected.commits` | array | Exact interval members in fixture order; empty on failure. |
 | `expected.reason` | string or null | Stable failure category, or null on success. |
 
+### `version-ancestry.json` — kind: `version_ancestry`
+
+Authenticated version-state selection and exact-tag derivation (§7.5,
+ADR-029). Top-level graphs, ref sets, decision inputs, bootstraps, predecessors,
+superseded decisions, and target reevaluations are immutable fixtures referenced
+by each vector. A `decision` fixture contains the ordinary §6 inputs but no
+version baseline or iteration; those are selected and derived by the ancestry
+rule.
+Accepted-state fixtures also carry any pending corrective bump created by an
+attestation-only semantic invalidation; only `advance` may consume and clear it.
+Their `target_intervals` list is the authenticated target lineage that a re-cut
+or an advance from an unpromoted target must carry forward.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `inputs.authority` | string | `bootstrap`, `predecessor`, or `superseded`. |
+| `inputs.action` | string | Signed `advance`, `recut`, or `supersede` intent. |
+| `inputs.graph` / `inputs.refs` | string | Named commit graph and observed raw/peeled tag-ref set. |
+| `inputs.bootstrap` | string or null | Authenticated chain-genesis fixture, including tag prefix and version predecessor/null genesis marker. |
+| `inputs.predecessor` | string or null | Accepted source predecessor carrying version state. |
+| `inputs.superseded` | string or null | Accepted decision whose source/version target is being re-evaluated. |
+| `inputs.decision` | string | Named §6 decision-input fixture; its effective bump/channel feed exact-tag derivation. |
+| `inputs.target_reevaluation` | string, optional | Authenticated complete-lineage reevaluation required when a re-cut or advance from an unpromoted target raises trust; absence means none, never a caller-selected scalar. |
+| `inputs.requested_version_predecessor` | string or null | Untrusted compatibility assertion; when present it must equal the authenticated predecessor and never selects it. |
+| `inputs.requested_iteration` | integer or null | Untrusted compatibility assertion; when present it must equal the derived iteration and never selects it. |
+| `expected.version_predecessor` | string or null | Authenticated prior canonical tag, or null at explicit new-line genesis. |
+| `expected.target_core` | string or null | Derived target core on success. |
+| `expected.iteration` | integer or null | Derived trust iteration; null for clean or attestation-only outcomes. |
+| `expected.version` | string or null | Exact new tag, or null for failure or any attestation-only outcome. |
+| `expected.advances_version_head` | bool | Whether the accepted result may supply version state to the next source release; late supersessions are attestation-only and false. |
+| `expected.corrective_floor` | string | Optional. Corrective bump bound by a current-head semantic invalidation (`patch`, `minor`, or `major`). |
+| `expected.reason` | string or null | Stable failure category, or null on success. |
+
 ### `policy-transition.json` — kind: `policy_transition`
 
 Bootstrap and previous-policy governance (§5.4, ADR-028). Top-level `policies`,
@@ -246,8 +286,10 @@ those paths; a candidate cannot remove that protection in-band.
 
 ### `decision.json` — kind: `decision`
 
-The §6.4 default decision table (the illustrative policy; tuned tables are out of scope) with §6.1 semantic
-floor, §6.3 strategies, and §7.1 encoding. `differ proof required` cells resolve to pre-release when
+The §6.4 decision/rendering kernel (the illustrative policy; tuned tables are out of scope) with §6.1 semantic
+floor, §6.3 strategies, and §7.1 encoding. Its version fields are authenticated
+§7.5 intermediate values, not caller inputs; `version-ancestry.json` verifies
+their selection. `differ proof required` cells resolve to pre-release when
 `differ_available` is false (§1.1 honest degradation); the requirement is qualified to PATCH claims where
 the table says so, and unqualified on the T1/low cell.
 
@@ -259,8 +301,8 @@ the table says so, and unqualified on the T1/low cell.
 | `inputs.differ_available` | bool | Whether a compatibility differ exists for the ecosystem (§6.1). |
 | `inputs.semantic_floor` | string | The §6.1 minimum bump: `patch`, `minor`, `major`. |
 | `inputs.claimed_bump` | string | The claimed bump, same values. |
-| `inputs.current_version` | string | The previous release tag (clean §7.1 form, component path allowed). |
-| `inputs.iteration` | int | Trust-suffix iteration for this cut (≥ 1; re-cuts increment it, §7.2). |
+| `inputs.authenticated_version_base` | string | Clean §7.1 rendering baseline already selected by authenticated version state. |
+| `inputs.authenticated_iteration` | int | Trust iteration already derived from accepted version state (≥ 1). |
 | `expected.channel` | string | `clean` or `prerelease`. |
 | `expected.bump` | string or null | Final bump: max of claim and semantic floor (the floor is honored unconditionally). |
 | `expected.version` | string or null | The exact §7.1 tag. |
@@ -290,6 +332,9 @@ the table says so, and unqualified on the T1/low cell.
 - **`release_range`** — compute the §5.2 reachability set and validate the
   boundary/predecessor facts; assert outcome, exact commit membership, and
   failure reason.
+- **`version_ancestry`** — select bootstrap/predecessor/superseded version
+  state, validate raw and peeled refs plus ancestry, derive target/iteration,
+  and assert the exact tag or stable failure reason.
 - **`policy_transition`** — select active policy from bootstrap/predecessor,
   enforce active identities plus union meta paths, validate candidate
   invariants, and assert evaluated/activated policy digests and failure reason.

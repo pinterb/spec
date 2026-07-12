@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 """check-conformance.py — independent validation of the SemVer-Trust conformance vectors.
 
-Validates the core, release-range, policy-transition, and cryptographic vector
-files against a second, independent implementation of the spec rules they
-encode (``spec/semver-trust.md`` §3.2-§3.3, §4.1-§4.2, §5.1-§5.4,
-§6.1-§6.4, §7.1-§7.2, §10, Appendix A). This is deliberately NOT the reference
+Validates the core, release-range, policy-transition, version-ancestry, and
+cryptographic vector files against a second, independent implementation of the
+spec rules they encode (``spec/semver-trust.md`` §3.2-§3.3, §4.1-§4.2,
+§5.1-§5.4, §6.1-§6.4, §7.1-§7.5, §10, Appendix A). This is deliberately NOT the reference
 Go implementation, and it shares no code with ``scripts/check-drift.py`` — the
 SemVer comparator, level invariant, interval reachability, policy-transition
-rules, scope/floor/propagation arithmetic, and decision table are re-implemented
-here from first principles. Agreement between independent implementations is
-the point.
+and version-ancestry rules, scope/floor/propagation arithmetic, and decision
+table are re-implemented here from first principles. Agreement between
+independent implementations is the point.
 
     uv run --group dev python3 scripts/check-conformance.py
 
@@ -44,6 +44,7 @@ AGGREGATION = CONFORMANCE / "aggregation.json"
 PROPAGATION = CONFORMANCE / "propagation.json"
 DECISION = CONFORMANCE / "decision.json"
 RANGE = CONFORMANCE / "range.json"
+VERSION_ANCESTRY = CONFORMANCE / "version-ancestry.json"
 POLICY_TRANSITION = CONFORMANCE / "policy-transition.json"
 SIGNATURE = CONFORMANCE / "crypto" / "signature-vectors.json"
 ATTESTATION = CONFORMANCE / "crypto" / "attestations" / "attestation-vectors.json"
@@ -54,6 +55,7 @@ VECTOR_FILES = (
     PROPAGATION,
     DECISION,
     RANGE,
+    VERSION_ANCESTRY,
     POLICY_TRANSITION,
     SIGNATURE,
     ATTESTATION,
@@ -535,15 +537,29 @@ _TABLE = {
 }
 
 
-def _decide(inputs: dict) -> dict:
+def _decision_outcome(inputs: dict) -> dict:
     cell = _TABLE[(inputs["effective_trust"], inputs["blast"])]
     bump = max(inputs["claimed_bump"], inputs["semantic_floor"], key=BUMP_RANK.__getitem__)
     differ_needed = cell == "differ_any" or (cell == "differ_patch" and bump == "patch")
     demoted = cell == "prerelease" or (differ_needed and not inputs["differ_available"])
 
-    m = _TRUST_TAG.match(inputs["current_version"])
+    if inputs["strategy"] == "inflate":
+        if demoted:
+            return {"channel": "clean", "escalate": True, "bump": None}
+        return {"channel": "clean", "escalate": False, "bump": bump}
+    return {"channel": "prerelease" if demoted else "clean", "bump": bump}
+
+
+def _decide(inputs: dict) -> dict:
+    decision = _decision_outcome(inputs)
+    if decision.get("escalate"):
+        return {**decision, "version": None}
+
+    base = inputs["authenticated_version_base"]
+    m = _TRUST_TAG.match(base)
     if m is None or m["level"] is not None:
-        raise ValueError(f"current_version must be a clean §7.1 tag: {inputs['current_version']}")
+        raise ValueError(f"authenticated_version_base must be a clean §7.1 tag: {base}")
+    bump = decision["bump"]
     major, minor, patch = (int(x) for x in m["core"].split("."))
     if bump == "major":
         core = f"{major + 1}.0.0"
@@ -553,16 +569,363 @@ def _decide(inputs: dict) -> dict:
         core = f"{major}.{minor}.{patch + 1}"
     prefix = f"{m['path']}/" if m["path"] else ""
 
-    if inputs["strategy"] == "inflate":
-        # §6.3: the escalation target (MINOR vs MAJOR) is a policy choice the
-        # spec does not pin, so escalated outcomes assert no exact version.
-        if demoted:
-            return {"channel": "clean", "escalate": True, "bump": None, "version": None}
-        return {"channel": "clean", "escalate": False, "bump": bump, "version": f"{prefix}v{core}"}
-    if demoted:
-        suffix = f"-t{LEVEL_RANK[inputs['effective_trust']]}.{inputs['iteration']}"
-        return {"channel": "prerelease", "bump": bump, "version": f"{prefix}v{core}{suffix}"}
-    return {"channel": "clean", "bump": bump, "version": f"{prefix}v{core}"}
+    if decision["channel"] == "prerelease":
+        iteration = inputs["authenticated_iteration"]
+        suffix = f"-t{LEVEL_RANK[inputs['effective_trust']]}.{iteration}"
+        return {**decision, "version": f"{prefix}v{core}{suffix}"}
+    return {**decision, "version": f"{prefix}v{core}"}
+
+
+def _bump_core(core: str, bump: str) -> str:
+    major, minor, patch = (int(part) for part in core.split("."))
+    if bump == "major":
+        return f"{major + 1}.0.0"
+    if bump == "minor":
+        return f"{major}.{minor + 1}.0"
+    return f"{major}.{minor}.{patch + 1}"
+
+
+# §7.5 / ADR-029: interval selection never supplies version ancestry. Bootstrap
+# or accepted predecessor state selects the baseline; action and bump are signed
+# candidate facts; exact target and iteration are derived.
+def _version_ancestry(doc: dict, inputs: dict) -> dict:
+    def fail(reason: str) -> dict:
+        return {
+            "outcome": "verification_failed",
+            "version_predecessor": None,
+            "target_core": None,
+            "iteration": None,
+            "version": None,
+            "advances_version_head": False,
+            "reason": reason,
+        }
+
+    graph = doc["graphs"][inputs["graph"]]
+    ordered = [commit["id"] for commit in graph]
+    parents = {commit["id"]: commit["parents"] for commit in graph}
+    if len(ordered) != len(parents) or any(
+        parent not in parents for commit_parents in parents.values() for parent in commit_parents
+    ):
+        return fail("invalid_version_graph")
+    to = inputs["to"]
+    if to not in parents:
+        return fail("unknown_to")
+    reachable_to = _commit_reach(to, parents)
+    refs = doc["ref_sets"][inputs["refs"]]
+
+    decision_inputs = doc["decisions"][inputs["decision"]]
+    decision = _decision_outcome(decision_inputs)
+    bump = decision["bump"]
+    if bump is None:
+        return fail("version_escalation_target_unresolved")
+
+    def binding_parts(binding: object, require_clean: bool) -> tuple[re.Match | None, str | None]:
+        if not isinstance(binding, dict):
+            return None, "version_predecessor_malformed"
+        tag = binding.get("tag")
+        if not isinstance(tag, str):
+            return None, "version_predecessor_malformed"
+        match = _TRUST_TAG.match(tag)
+        if match is None or (require_clean and match["level"] is not None):
+            return None, "version_predecessor_malformed"
+        if (match["path"] or "") != inputs["tag_prefix"]:
+            return None, "version_predecessor_component_mismatch"
+        observed = refs.get(tag)
+        if observed is None:
+            return None, "version_predecessor_missing"
+        if observed["ref_oid"] != binding.get("ref_oid"):
+            return None, "version_predecessor_ref_moved"
+        if observed["commit_oid"] != binding.get("commit_oid"):
+            return None, "version_predecessor_commit_moved"
+        return match, None
+
+    authority = inputs["authority"]
+    state: dict | None = None
+    version_predecessor: str | None = None
+    source_successor_exists = False
+    target_reevaluation_consumed = False
+
+    if authority == "bootstrap":
+        bootstrap_ref = inputs.get("bootstrap")
+        if bootstrap_ref is None:
+            return fail("version_bootstrap_missing")
+        bootstrap = doc["bootstraps"][bootstrap_ref]
+        if not bootstrap["authenticated"]:
+            return fail("version_bootstrap_unauthenticated")
+        if (
+            bootstrap["repository"] != inputs["repository"]
+            or bootstrap["component"] != inputs["component"]
+        ):
+            return fail("version_bootstrap_subject_mismatch")
+        if bootstrap["interval_mode"] != inputs["interval_mode"]:
+            return fail("version_bootstrap_interval_mismatch")
+        if bootstrap["boundary"] != inputs["boundary"]:
+            return fail("version_bootstrap_boundary_mismatch")
+        if bootstrap["tag_prefix"] != inputs["tag_prefix"]:
+            return fail("version_bootstrap_prefix_mismatch")
+        if inputs["action"] != "advance":
+            return fail("version_genesis_requires_advance")
+
+        if "version_predecessor" not in bootstrap:
+            return fail("version_predecessor_selection_missing")
+        predecessor = bootstrap["version_predecessor"]
+        if isinstance(predecessor, list):
+            return fail("version_predecessor_ambiguous")
+        if predecessor is None:
+            base_core = "0.0.0"
+        else:
+            match, reason = binding_parts(predecessor, require_clean=True)
+            if reason is not None:
+                return fail(reason)
+            predecessor_commit = predecessor["commit_oid"]
+            if predecessor_commit not in parents:
+                return fail("version_predecessor_not_ancestor")
+            if inputs["interval_mode"] == "inception":
+                ancestor_target = reachable_to
+            elif inputs["interval_mode"] == "adoption":
+                boundary = inputs["boundary"]
+                if boundary not in parents or boundary not in reachable_to:
+                    return fail("version_bootstrap_boundary_invalid")
+                ancestor_target = _commit_reach(boundary, parents)
+            else:
+                return fail("version_bootstrap_interval_mismatch")
+            if predecessor_commit not in ancestor_target:
+                return fail("version_predecessor_not_ancestor")
+            base_core = match["core"]
+            version_predecessor = predecessor["tag"]
+        target_core = _bump_core(base_core, bump)
+        iterations: dict[str, int] = {}
+        clean_accepted = False
+    elif authority in {"predecessor", "superseded"}:
+        collection = doc["predecessors"] if authority == "predecessor" else doc["superseded"]
+        fixture_ref = inputs.get(authority)
+        if fixture_ref is None:
+            return fail("version_predecessor_missing")
+        selected = collection[fixture_ref]
+        if not selected["accepted"]:
+            return fail("version_predecessor_not_accepted")
+        if authority == "predecessor" and not selected["chain_head"]:
+            return fail("version_predecessor_not_chain_head")
+        if (
+            selected["repository"] != inputs["repository"]
+            or selected["component"] != inputs["component"]
+        ):
+            return fail("version_predecessor_subject_mismatch")
+        if selected["tag_prefix"] != inputs["tag_prefix"]:
+            return fail("version_predecessor_component_mismatch")
+        if inputs["interval_mode"] != "recurring":
+            return fail("version_predecessor_interval_mismatch")
+        canonical_tags = selected["canonical_tags"]
+        if len(canonical_tags) != 1:
+            return fail("version_predecessor_ambiguous")
+        canonical = canonical_tags[0]
+        match, reason = binding_parts(canonical, require_clean=False)
+        if reason is not None:
+            return fail(reason)
+        if canonical["commit_oid"] != selected["to"]:
+            return fail("version_predecessor_state_mismatch")
+        if authority == "predecessor":
+            if selected["to"] not in reachable_to or selected["to"] == to:
+                return fail("version_predecessor_not_ancestor")
+            if inputs["action"] not in {"advance", "recut"}:
+                return fail("version_action_invalid")
+        else:
+            if selected["to"] != to or inputs["action"] != "supersede":
+                return fail("version_supersession_mismatch")
+            source_successor_exists = selected["source_successor_exists"]
+
+        state = selected["version_state"]
+        if _SEMVER.fullmatch(state["target_core"]) is None or state["target_bump"] not in BUMP_RANK:
+            return fail("version_predecessor_state_mismatch")
+        corrective_floor = state.get("corrective_floor")
+        if corrective_floor is not None and corrective_floor not in BUMP_RANK:
+            return fail("version_predecessor_state_mismatch")
+        if (
+            corrective_floor is not None
+            and BUMP_RANK[corrective_floor] <= BUMP_RANK[state["target_bump"]]
+        ):
+            return fail("version_predecessor_state_mismatch")
+        target_intervals = state.get("target_intervals")
+        if (
+            not isinstance(target_intervals, list)
+            or not target_intervals
+            or not all(isinstance(interval, str) and interval for interval in target_intervals)
+            or len(target_intervals) != len(set(target_intervals))
+        ):
+            return fail("version_predecessor_state_mismatch")
+        if state["target_core"] != match["core"]:
+            return fail("version_predecessor_state_mismatch")
+        iterations = state["iterations"].copy()
+        if any(
+            level not in LEVEL_RANK or not isinstance(value, int) or value < 1
+            for level, value in iterations.items()
+        ):
+            return fail("version_predecessor_state_mismatch")
+        if match["level"] is None:
+            if not state["clean_accepted"]:
+                return fail("version_predecessor_state_mismatch")
+        else:
+            level = f"T{match['level']}"
+            if state["clean_accepted"] or iterations.get(level) != int(match["iter"]):
+                return fail("version_predecessor_state_mismatch")
+        baseline = state["baseline"]
+        if baseline is None:
+            if state["baseline_core"] != "0.0.0":
+                return fail("version_predecessor_state_mismatch")
+        else:
+            baseline_match, reason = binding_parts(baseline, require_clean=False)
+            if reason is not None or baseline_match["core"] != state["baseline_core"]:
+                return fail(reason or "version_predecessor_state_mismatch")
+            if baseline["commit_oid"] not in _commit_reach(selected["to"], parents):
+                return fail("version_predecessor_state_mismatch")
+        if _bump_core(state["baseline_core"], state["target_bump"]) != state["target_core"]:
+            return fail("version_predecessor_state_mismatch")
+
+        version_predecessor = canonical["tag"]
+        if inputs["action"] == "recut":
+            if corrective_floor is not None:
+                return fail("version_corrective_advance_required")
+            if state["clean_accepted"]:
+                return fail("recut_clean_target_accepted")
+            if BUMP_RANK[bump] > BUMP_RANK[state["target_bump"]]:
+                return fail("recut_target_bump_exceeded")
+
+        carries_target_lineage = inputs["action"] == "recut" or (
+            inputs["action"] == "advance" and not state["clean_accepted"]
+        )
+        reevaluation_ref = inputs.get("target_reevaluation")
+        if carries_target_lineage:
+            prior_target_trust = f"T{match['level']}"
+            if reevaluation_ref is not None:
+                reevaluation = doc.get("target_reevaluations", {}).get(reevaluation_ref)
+                if (
+                    not isinstance(reevaluation, dict)
+                    or not reevaluation.get("authenticated")
+                    or reevaluation.get("predecessor") != fixture_ref
+                    or reevaluation.get("target_core") != state["target_core"]
+                    or reevaluation.get("source_intervals")
+                    != [*target_intervals, f"{selected['to']}..{to}"]
+                    or reevaluation.get("effective_trust") != decision_inputs["effective_trust"]
+                ):
+                    return fail("version_target_trust_reevaluation_invalid")
+                target_reevaluation_consumed = True
+            elif LEVEL_RANK[decision_inputs["effective_trust"]] > LEVEL_RANK[prior_target_trust]:
+                return fail("version_target_trust_reevaluation_required")
+
+        if inputs["action"] == "advance":
+            if corrective_floor is not None:
+                decision_inputs = {
+                    **decision_inputs,
+                    "semantic_floor": max(
+                        decision_inputs["semantic_floor"],
+                        corrective_floor,
+                        key=BUMP_RANK.__getitem__,
+                    ),
+                }
+                decision = _decision_outcome(decision_inputs)
+                bump = decision["bump"]
+                if bump is None:
+                    return fail("version_escalation_target_unresolved")
+            advance_bump = max(
+                (candidate for candidate in (bump, corrective_floor) if candidate is not None),
+                key=BUMP_RANK.__getitem__,
+            )
+            target_core = _bump_core(state["target_core"], advance_bump)
+            iterations = {}
+            clean_accepted = False
+        elif inputs["action"] == "recut":
+            target_core = state["target_core"]
+            clean_accepted = False
+        else:
+            target_core = state["target_core"]
+            clean_accepted = state["clean_accepted"]
+    else:
+        return fail("version_authority_unknown")
+
+    if inputs.get("target_reevaluation") is not None and not target_reevaluation_consumed:
+        return fail("version_target_trust_reevaluation_invalid")
+
+    requested_predecessor = inputs.get("requested_version_predecessor")
+    if requested_predecessor is not None and requested_predecessor != version_predecessor:
+        return fail("version_predecessor_override")
+
+    channel = decision["channel"]
+    advances_version_head = authority != "superseded" or not source_successor_exists
+
+    if authority == "superseded" and source_successor_exists:
+        if inputs.get("requested_iteration") is not None:
+            return fail("version_iteration_override")
+        return {
+            "outcome": "verified",
+            "version_predecessor": version_predecessor,
+            "target_core": target_core,
+            "iteration": None,
+            "version": None,
+            "advances_version_head": False,
+            "reason": None,
+        }
+
+    if authority == "superseded" and BUMP_RANK[bump] > BUMP_RANK[state["target_bump"]]:
+        if inputs.get("requested_iteration") is not None:
+            return fail("version_iteration_override")
+        return {
+            "outcome": "verified",
+            "version_predecessor": version_predecessor,
+            "target_core": target_core,
+            "iteration": None,
+            "version": None,
+            "advances_version_head": advances_version_head,
+            "corrective_floor": max(
+                (
+                    candidate
+                    for candidate in (bump, state.get("corrective_floor"))
+                    if candidate is not None
+                ),
+                key=BUMP_RANK.__getitem__,
+            ),
+            "reason": None,
+        }
+
+    if authority == "superseded" and clean_accepted and channel == "prerelease":
+        if inputs.get("requested_iteration") is not None:
+            return fail("version_iteration_override")
+        return {
+            "outcome": "verified",
+            "version_predecessor": version_predecessor,
+            "target_core": target_core,
+            "iteration": None,
+            "version": None,
+            "advances_version_head": advances_version_head,
+            "reason": None,
+        }
+
+    prefix = f"{inputs['tag_prefix']}/" if inputs["tag_prefix"] else ""
+    if channel == "clean":
+        if clean_accepted:
+            version = None
+            iteration = None
+        else:
+            version = f"{prefix}v{target_core}"
+            iteration = None
+    else:
+        level = decision_inputs["effective_trust"]
+        iteration = iterations.get(level, 0) + 1
+        version = f"{prefix}v{target_core}-t{LEVEL_RANK[level]}.{iteration}"
+
+    requested_iteration = inputs.get("requested_iteration")
+    if requested_iteration is not None and requested_iteration != iteration:
+        return fail("version_iteration_override")
+    if version is not None and version in refs:
+        return fail("version_output_tag_exists")
+    return {
+        "outcome": "verified",
+        "version_predecessor": version_predecessor,
+        "target_core": target_core,
+        "iteration": iteration,
+        "version": version,
+        "advances_version_head": advances_version_head,
+        "reason": None,
+    }
 
 
 # ---- Checks ----------------------------------------------------------------
@@ -822,7 +1185,8 @@ def check_ranges(vectors: list[dict]) -> None:
 
 def check_git_interval_commands() -> None:
     """Prove the §5.2 set definitions match the specified Git commands,
-    including a merge boundary with two parents and a root boundary."""
+    including a merge boundary with two parents and a root boundary, and prove
+    §7.5's distinction between a tag ref's raw and peeled object IDs."""
 
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp) / "repo"
@@ -889,6 +1253,47 @@ def check_git_interval_commands() -> None:
                 root_adoption == expected_all,
                 f"root B^@ handling produced {sorted(root_adoption)}",
             )
+            before_boundary = subprocess.run(
+                ["git", "-C", str(repo), "merge-base", "--is-ancestor", root, boundary],
+                capture_output=True,
+                check=False,
+            ).returncode
+            after_boundary = subprocess.run(
+                ["git", "-C", str(repo), "merge-base", "--is-ancestor", after, boundary],
+                capture_output=True,
+                check=False,
+            ).returncode
+            check(
+                "version-git-predecessor-before-boundary",
+                before_boundary == 0,
+                "git merge-base rejected an ancestor version predecessor",
+            )
+            check(
+                "version-git-predecessor-after-boundary",
+                after_boundary != 0,
+                "git merge-base accepted a descendant version predecessor",
+            )
+            git(
+                "tag",
+                "--no-sign",
+                "-a",
+                "version-predecessor",
+                "-m",
+                "version predecessor",
+                root,
+            )
+            raw_tag_oid = git("rev-parse", "refs/tags/version-predecessor")
+            peeled_commit_oid = git("rev-parse", "refs/tags/version-predecessor^{commit}")
+            check(
+                "version-git-annotated-tag-raw-and-peeled-differ",
+                raw_tag_oid != peeled_commit_oid,
+                "annotated tag raw and peeled object IDs unexpectedly match",
+            )
+            check(
+                "version-git-annotated-tag-peeled-target",
+                peeled_commit_oid == root,
+                "annotated tag did not peel to its exact bound commit",
+            )
         except subprocess.CalledProcessError as exc:
             check(
                 "range-git-command-fixture",
@@ -916,6 +1321,36 @@ def check_policy_transitions(doc: dict) -> None:
         "policy-transition-authorities-exhaustive",
         not missing,
         f"missing authorities: {sorted(missing)}",
+    )
+
+
+def check_version_ancestry(doc: dict) -> None:
+    vectors = [
+        vector for vector in doc.get("vectors", []) if vector.get("kind") == "version_ancestry"
+    ]
+    check("version-ancestry-group-nonempty", bool(vectors))
+    authorities = set()
+    actions = set()
+    for vector in vectors:
+        authorities.add(vector["inputs"]["authority"])
+        actions.add(vector["inputs"]["action"])
+        got = _version_ancestry(doc, vector["inputs"])
+        check(
+            f"version-ancestry-{vector['id']}",
+            got == vector["expected"],
+            f"version ancestry mismatch: computed {got}, vector says {vector['expected']}",
+        )
+    missing_authorities = {"bootstrap", "predecessor", "superseded"} - authorities
+    check(
+        "version-ancestry-authorities-exhaustive",
+        not missing_authorities,
+        f"missing authorities: {sorted(missing_authorities)}",
+    )
+    missing_actions = {"advance", "recut", "supersede"} - actions
+    check(
+        "version-ancestry-actions-exhaustive",
+        not missing_actions,
+        f"missing actions: {sorted(missing_actions)}",
     )
 
 
@@ -1247,6 +1682,7 @@ def main() -> int:
         check_decision(docs[DECISION.name]["vectors"])
         check_ranges(docs[RANGE.name]["vectors"])
         check_git_interval_commands()
+        check_version_ancestry(docs[VERSION_ANCESTRY.name])
         check_policy_transitions(docs[POLICY_TRANSITION.name])
         check_attestations(docs[ATTESTATION.name])
         check_format_gate()

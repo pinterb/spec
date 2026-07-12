@@ -47,10 +47,11 @@ decision is the way it is.
 The specification is a **v0.4 working draft**. The official Go
 implementation ([semver-trust-go](https://github.com/semver-trust/semver-trust-go))
 passes the draft v0.3 conformance suite and releases itself under the scheme
-(v0.1.0 and v0.2.0 are published, verified, and reproducible from public
-material). Draft v0.4 adds trust-chain vectors that are pending implementation.
-Design discussion happens in
-[issues](https://github.com/semver-trust/spec/issues) — see
+(v0.1.0 and v0.2.0 are published, verified, reproducible dogfood). The legacy
+release path is not suitable for production claims until the successor protocol
+and conformance contract land. Draft v0.4 adds release-interval,
+policy-transition, and authenticated version-ancestry vectors that are pending
+implementation. Design discussion happens in [issues](https://github.com/semver-trust/spec/issues) — see
 [CONTRIBUTING](CONTRIBUTING.md) before opening a pull request.
 
 ## License and trademark
