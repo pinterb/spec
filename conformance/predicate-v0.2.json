@@ -1,6 +1,6 @@
 {
   "$comment": "SPDX-License-Identifier: Apache-2.0",
-  "spec_version": "0.9",
+  "spec_version": "0.10",
   "description": "Schema-instance vectors for the SemVer-Trust v0.2 successor predicate family. These are unsigned in-toto Statement payload fixtures; DSSE signing fixtures remain separate.",
   "vectors": [
     {
@@ -9,6 +9,13 @@
       "kind": "release",
       "inputs": { "payload": "predicate-v0.2/release-valid.json" },
       "expected": { "schema_valid": true }
+    },
+    {
+      "id": "predicate-v02/release/valid-source-evidence-extension",
+      "spec": "§8.1, §8.3, ADR-030, ADR-035",
+      "kind": "release",
+      "inputs": { "payload": "predicate-v0.2/release-valid-source-evidence-extension.json" },
+      "expected": { "schema_valid": true, "source_evidence_extension": true }
     },
     {
       "id": "predicate-v02/release/rejects-missing-authority-identity",

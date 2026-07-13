@@ -116,6 +116,38 @@
       "channel": "prerelease",
       "supersedes": null
     },
-    "timestamp": "2026-07-12T20:00:00Z"
+    "timestamp": "2026-07-12T20:00:00Z",
+    "extensions": {
+      "https://semver-trust.dev/extensions/source-evidence/v0.1": {
+        "profile": {
+          "name": "slsa-source-vsa-fixture",
+          "version": "0.1",
+          "digest": { "sha256": "2222222222222222222222222222222222222222222222222222222222222222" }
+        },
+        "mode": "trusted_issuer",
+        "repository_resource_uri": "repo:semver-trust.test/auth",
+        "source_revision": { "gitCommit": "cccccccccccccccccccccccccccccccccccccccc" },
+        "issuer_roots": [
+          {
+            "uri": "scs:github:semver-trust-fixtures",
+            "digest": { "sha256": "3333333333333333333333333333333333333333333333333333333333333333" }
+          }
+        ],
+        "evidence": [
+          {
+            "uri": "vsa:source-evidence:fixture:1",
+            "digest": { "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+            "issuer": "scs:github:semver-trust-fixtures"
+          }
+        ],
+        "freshness": {
+          "verification_instant": "2026-07-12T20:00:00Z",
+          "current_state": {
+            "uri": "transparency:fixture:source-state:1",
+            "digest": { "sha256": "5555555555555555555555555555555555555555555555555555555555555555" }
+          }
+        }
+      }
+    }
   }
 }

@@ -8,20 +8,21 @@ reference implementation treats them as acceptance tests, and any other implemen
 passing them.
 
 The Go reference implementation currently implements the draft v0.3 vector
-set. The v0.4–v0.9 range, policy-transition, version-ancestry, successor
+set. The v0.4–v0.10 range, policy-transition, version-ancestry, successor
 predicate, qualified-review, threshold-decision, and derivation-fail-closed
 groups in this revision are the source contract for its next coordinated,
 digest-pinned update. Draft v0.9 also documents ecosystem publishing profiles;
-adversarial registry-projection vectors remain future coverage.
+adversarial registry-projection vectors remain future coverage. Draft v0.10
+adds source-evidence profile vectors for SLSA Source-style evidence binding.
 
 Each vector is derived directly from a normative section of the spec and carries a `spec` back-reference to
 it. The vectors in this directory cover **level assignment** (§3.2, §3.3, §4.1–§4.2), **version precedence
 and tag grammar** (§7.1, §7.2), **aggregation** (§5.1–§5.2 scope partitioning and floors, §5.4 meta-paths,
 with §4.4 derivation claims ignored for portable re-leveling), **transitive propagation** (§5.3, including SCC
 collapse), **release intervals and predecessor continuity** (§5.2), **policy transitions** (§5.4),
-**authenticated version ancestry** (§7.5), **qualified review** (§4.3), and **release decisions** (§6.1–§6.4
-with §7.1 encoding). Every step of the spec's Appendix A worked example is reproduced as a vector (ids
-containing `appendix-a`).
+**authenticated version ancestry** (§7.5), **qualified review** (§4.3), **release decisions** (§6.1–§6.4
+with §7.1 encoding), and **source evidence profiles** (§8.3). Every step of the spec's Appendix A worked
+example is reproduced as a vector (ids containing `appendix-a`).
 Cryptographic verification fixtures —
 vendored test keys, the allowed-signers registry, deterministically built fixture repositories, and SSH
 signature vectors (§4.2, §10 step 5) — live under [`crypto/`](crypto/README.md), which also documents the v1
@@ -40,6 +41,7 @@ capability limitation (SSH-only, with fail-closed behavior on other key families
 | `version-ancestry.json` | Genesis/recurring/superseding version-state and exact-tag vectors | Apache 2.0 |
 | `policy-transition.json` | Bootstrap, previous-policy, meta-path, and delayed-activation vectors | Apache 2.0 |
 | `review-qualification.json` | Qualified-review, canonical-actor, final-revision, and agent-independence vectors | Apache 2.0 |
+| `source-evidence.json` | Source-evidence profile binding vectors for SLSA Source-style evidence | Apache 2.0 |
 | `crypto/` | Cryptographic fixtures: vendored test keys, allowed-signers registry, deterministic fixture-repo builder, SSH signature vectors (see `crypto/README.md`) | Apache 2.0 |
 | `check-conformance.py` (in `../scripts/`) | Independent validator for these files (self-check, not the harness) | Apache 2.0 |
 | `LICENSE` | Verbatim Apache 2.0 text, vendored so copies carry their license | Apache 2.0 |
@@ -51,21 +53,21 @@ against these vectors.
 
 ## `spec_version` pinning
 
-Every vector file carries a top-level `spec_version` (currently `"0.9"`). It names the spec draft the vectors
+Every vector file carries a top-level `spec_version` (currently `"0.10"`). It names the spec draft the vectors
 encode, not the version of the vector set. The rules:
 
-- The vectors track the pinned spec draft. When they say `"0.9"`, their expectations are those of
-  `spec/semver-trust.md` **Draft v0.9**.
+- The vectors track the pinned spec draft. When they say `"0.10"`, their expectations are those of
+  `spec/semver-trust.md` **Draft v0.10**.
 - All vector files in this directory MUST share the same `spec_version`; the validator enforces this and
   cross-checks it against the spec's draft header.
-- An implementation claims conformance **against a `spec_version`** — "conforms to SemVer-Trust 0.9 level and
+- An implementation claims conformance **against a `spec_version`** — "conforms to SemVer-Trust 0.10 level and
   precedence vectors" is the precise claim.
 
 The frozen v0.1 DSSE fixtures retain their v0.1 predicate bytes while their
-vector envelope is pinned to spec draft 0.9. Passing those vectors proves
+vector envelope is pinned to spec draft 0.10. Passing those vectors proves
 **backward verification** of historical v0.1 attestations only. It does not make
-v0.1 sufficient for a v0.9 release-conformance claim; §8.1 requires the v0.2
-successor predicate before v0.9 release emission.
+v0.1 sufficient for a v0.10 release-conformance claim; §8.1 requires the v0.2
+successor predicate before v0.10 release emission.
 
 The range, policy-transition, and version-ancestry files isolate independent
 dimensions for precise failures. Their authority fixtures are projections, not
@@ -74,7 +76,10 @@ source-interval, policy, and version-state field required by §8.1.
 `predicate-v0.2.json` adds unsigned positive and negative in-toto Statement
 payload fixtures for the successor schemas. The crypto attestation vectors also
 include signed positive DSSE envelopes for the v0.2 release and review
-successor predicates.
+successor predicates. One positive release fixture carries a populated
+`predicate.extensions["https://semver-trust.dev/extensions/source-evidence/v0.1"]`
+binding so §8.3's source-evidence extension wire shape is exercised by the
+schema-instance suite, not only by the abstract source-evidence oracle.
 
 ## Vector format
 
@@ -83,7 +88,7 @@ Every vector file shares an envelope:
 ```json
 {
   "$comment": "SPDX-License-Identifier: Apache-2.0",
-  "spec_version": "0.9",
+  "spec_version": "0.10",
   "description": "…what this file covers…",
   "vectors": [ /* … */ ]
 }
@@ -178,7 +183,7 @@ Diff-path lists mapped through a policy scope-glob map (§5.1). Globs are gitign
 ### `aggregation.json` — kind: `scope_floor`
 
 Same inputs plus per-commit levels; asserts the §5.2 per-scope floor. A commit MAY carry a `derivation`
-object as non-authoritative metadata or an adversarial fixture. Under the draft v0.9 portable baseline,
+object as non-authoritative metadata or an adversarial fixture. Under the draft v0.10 portable baseline,
 derivation metadata never raises path trust: every changed path contributes the commit's raw `level`.
 
 | Field | Type | Meaning |
@@ -322,6 +327,25 @@ commit receives.
 | `expected.level` | string | Resulting level under §3.2. |
 | `expected.reason` | string or null | Stable non-qualification category, or null when the review qualifies. |
 
+### `source-evidence.json`
+
+Profile-level source evidence binding vectors for §8.3. These are deliberately
+not full raw source-control transcripts; #29 tracks broader adversarial
+end-to-end coverage. They assert stable acceptance/failure categories for
+SLSA Source-style evidence before such evidence can feed a release decision.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `inputs.mode` | string | Source evidence verification mode: `replay` or `trusted_issuer`. |
+| `inputs.repository` | string | Canonical repository resource URI expected by the release chain. |
+| `inputs.release_to` | object | Immutable source revision digest selected by the release interval. |
+| `inputs.allowed_digest_algorithms` | array | Digest keys permitted by the source evidence profile for subject matching. |
+| `inputs.trusted_issuers` | array | Source-control or VSA issuer identities authorized for this evidence purpose. |
+| `inputs.evidence[]` | array | Source evidence statements containing issuer, `resourceUri`, subject digest, source refs, freshness, replay status, and verified levels/properties. |
+| `inputs.current_state.hidden_demotions` | array | Current-state facts showing hidden superseding demotions. Non-empty aborts. |
+| `expected.accepted` | bool | Whether the source evidence may be consumed. |
+| `expected.reason` | string or null | Stable failure category, or null when accepted. |
+
 ### `decision.json` — kind: `decision`
 
 The §6.4 baseline decision/rendering kernel with §6.1 semantic floor, §6.2
@@ -379,6 +403,12 @@ false (§1.1 honest degradation).
 - **`policy_transition`** — select active policy from bootstrap/predecessor,
   enforce active identities plus union meta paths, validate candidate
   invariants, and assert evaluated/activated policy digests and failure reason.
+- **`source-evidence`** — validate source-evidence profile binding: issuer
+  authorization, repository/resource matching, subject matching, digest
+  algorithm policy, replay vs trusted-issuer mode, freshness, hidden demotion,
+  and equivocation.
+- **`predicate-v02`** — validate unsigned v0.2 successor predicate instances,
+  including one positive `release/v0.2` source-evidence extension binding.
 - **`decision`** — run the §6 baseline decision function; assert channel, bump, and the exact
   version string (or, for escalated `inflate` vectors, that the bump escalates).
 

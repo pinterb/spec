@@ -4,7 +4,7 @@
 **Companion to:** the SemVer-Trust specification (normative) — canonical
 location `spec/semver-trust.md` in `github.com/semver-trust/spec`
 **This document:** explanatory — rationale, rejected alternatives, review findings, open threads, agent handoff
-**Date:** 2026-07-13 · **Revision:** r14 (see revision history)
+**Date:** 2026-07-13 · **Revision:** r15 (see revision history)
 **Audience:** Both human engineering teams, and future AI agents continuing this work
 
 ---
@@ -18,7 +18,7 @@ Two sentences carry the entire design; everything else is derivation:
 1. **A version bump is a compatibility claim; a trust level is the strength of evidence behind the claim.**
 2. **Trust levels measure attested accountability, not keystrokes.**
 
-Current state: **spec draft v0.9** is published at `spec/semver-trust.md`;
+Current state: **spec draft v0.10** is published at `spec/semver-trust.md`;
 release/review predicate definitions, schemas, core and cryptographic
 conformance vectors, and consistency checks are committed. The official Go
 implementation consumes the vendored v0.3 conformance contract and has
@@ -32,8 +32,9 @@ and canonical actor distinctness; v0.7 defines threshold as a hard
 clean-channel accountability gate and separates accountability from blast/risk
 policy; v0.8 removes executable derivation proofs from the portable baseline;
 v0.9 replaces unconditional resolver-routing claims with ecosystem publishing
-profiles and defers non-injective PyPI projection. Decisions are recorded
-through ADR-034.
+profiles and defers non-injective PyPI projection; v0.10 defines source
+evidence profiles for SLSA Source and similar source-control evidence.
+Decisions are recorded through ADR-035.
 
 ## 2. Project origin and intent
 
@@ -108,6 +109,7 @@ status.
 | ADR-032 | Threshold is a hard clean-channel accountability gate |
 | ADR-033 | Executable derivation proofs are out of the portable baseline |
 | ADR-034 | Ecosystem publishing profiles constrain resolver-routing claims |
+| ADR-035 | Source evidence profiles consume SLSA Source with explicit verification mode |
 
 ## 5. Design review findings (QA record)
 
@@ -187,14 +189,14 @@ The design leans on ecosystem behaviors that were asserted from knowledge, not r
 | Artifact | Status |
 |---|---|
 | GitHub organization `semver-trust` | **Exists** (created July 2026). Pending: `.github` profile repo/README as the org front door. |
-| `spec` repository | **Active**; contains the draft v0.9 normative spec, design record, ADRs through ADR-034, predicate definitions, schemas, conformance vectors, consistency checks, governance files, and the dual-license arrangement. |
-| Normative spec | **Draft v0.9** at `spec/semver-trust.md`; Appendix C–J record the v0.2–v0.9 deltas. |
-| This document | Explanatory companion, revision r14. |
+| `spec` repository | **Active**; contains the draft v0.10 normative spec, design record, ADRs through ADR-035, predicate definitions, schemas, conformance vectors, consistency checks, governance files, and the dual-license arrangement. |
+| Normative spec | **Draft v0.10** at `spec/semver-trust.md`; Appendix C–K record the v0.2–v0.10 deltas. |
+| This document | Explanatory companion, revision r15. |
 | `TRADEMARK.md` | **Committed**; ecosystem naming, conformance claims, fork naming, and affiliation rules are documented. IP-counsel review remains advisable if traction arrives. |
-| `semver-trust-go` repository | **Implemented through draft v0.3**; consumes digest-pinned conformance artifacts and has published v0.1.0 and v0.2.0 as dogfood. Its legacy release path is not suitable for production claims; draft v0.9 trust-chain, successor-predicate, and publishing-profile behavior is pending implementation. |
+| `semver-trust-go` repository | **Implemented through draft v0.3**; consumes digest-pinned conformance artifacts and has published v0.1.0 and v0.2.0 as dogfood. Its legacy release path is not suitable for production claims; draft v0.10 trust-chain, successor-predicate, publishing-profile, and source-evidence behavior is pending implementation. |
 | Formal JSON Schemas for predicates | **Emitted at v0.1 and draft successor v0.2** under `schemas/`, with Apache 2.0 licensing and closed-object validation. Predicate v0.1 is historical; v0.2 carries the compatibility-critical successor bindings. |
 | Release/review predicate definitions | **Published at v0.1 and v0.2** under `release/` and `review/`; the first DSSE fixture emission occurred in spec PR #16 and remains v0.1 historical evidence. |
-| Conformance suite | **Implemented for draft v0.8**; covers level assignment, qualified review classification, precedence, release intervals/predecessors, policy bootstrap/transitions, authenticated version ancestry, propagation, aggregation, derivation-fail-closed behavior, thresholded decisions, commit signatures, DSSE attestation verification, successor predicate schema registration, unsigned v0.2 schema-instance fixtures, and signed positive v0.2 DSSE fixtures. Draft v0.9 publishing profiles are documented but not yet covered by adversarial registry-projection vectors. |
+| Conformance suite | **Implemented for draft v0.10**; covers level assignment, qualified review classification, precedence, release intervals/predecessors, policy bootstrap/transitions, authenticated version ancestry, propagation, aggregation, derivation-fail-closed behavior, thresholded decisions, source-evidence profile binding, commit signatures, DSSE attestation verification, successor predicate schema registration, unsigned v0.2 schema-instance fixtures, and signed positive v0.2 DSSE fixtures. Draft v0.9 publishing profiles are documented but not yet covered by adversarial registry-projection vectors. |
 | Predicate-type domain | **Registered and wired:** `semver-trust.dev`; v0.1 and v0.2 release/review predicate definitions are present in the Pages source. |
 | Name | **Decided:** SemVer-Trust (ADR-013). |
 | Licensing & control | **Implemented** per ADR-014: CC BY 4.0 prose, Apache 2.0 machine-consumable artifacts, directory-local Apache license copies, and trademark-based conformance control. CLA-vs-DCO remains deferred until the first external contribution. |
@@ -217,7 +219,7 @@ The design leans on ecosystem behaviors that were asserted from knowledge, not r
 8. ~~Build and dogfood the Go reference implementation~~ (v0.1.0 and v0.2.0 released under the scheme). Remaining per ADR-017: a minimal demand-side consumer (`verify` GitHub Action + README trust badge) and retrospective trust profiling — the E5 artifact and E2 test, respectively.
 9. Dogfood target #2: Brad's Go API starter repo (oapi-codegen) — it already has the human-reviewed-contract philosophy and a `CLAUDE.md` agent contract; after ADR-033, generated outputs need ordinary accountable review or a future accepted proof profile before they can raise trust in portable conformance.
 10. Design the `go-semver` retirement/redirect story (deprecation notice pointing at the org).
-11. Revisit spec §12 open questions as evidence accumulates (T1 efficacy, trust decay, SLSA mapping, cross-repo propagation). Note the irony recorded for honesty: the project defining transitive trust for monorepos chose a polyrepo for itself, so cross-repo trust (spec §12.4) will eventually be felt firsthand.
+11. Revisit spec §12 open questions as evidence accumulates (T1 efficacy, trust decay, SLSA Build mapping for external dependencies, cross-repo propagation). Note the irony recorded for honesty: the project defining transitive trust for monorepos chose a polyrepo for itself, so cross-repo trust (spec §12.4) will eventually be felt firsthand.
 
 ## 9. Agent handoff contract
 
@@ -225,7 +227,7 @@ Instructions to any agent (or human) resuming this work:
 
 1. **Document precedence:** the spec — `spec/semver-trust.md` in `github.com/semver-trust/spec` — is normative. This document explains *why*; where they conflict, the spec wins and the conflict should be reported as a defect.
 2. **Do not re-litigate rejected alternatives** (ADR "Rejected" entries) without *new evidence or a changed requirement*. In particular: build-metadata encoding (ADR-001), de-minimis exemptions (P3/ADR-033), unverifiable→T0 (ADR-008), and inflation-as-only-strategy (ADR-005) were each rejected for stated reasons that have not changed.
-3. **Change protocol:** decisions change by *superseding* — create `docs/adr/NNNN-slug.md` with the next number and a `Supersedes:` field; never edit an accepted ADR's Decision/Rationale/Rejected content in place (the sole permitted edit to a superseded file is its Status line, set to `Superseded by ADR-NNN`). Update the `docs/adr/README.md` index. Mirror material changes into the spec with a version bump of the spec itself. Predicate v0.1 remains historical and cannot carry draft v0.9 interval, policy, version-state, qualified-review, threshold-decision, derivation-fail-closed, or publishing-profile claims; do not mutate it. Successor predicate changes after first emission require a new predicate URI when validation or interpretation changes.
+3. **Change protocol:** decisions change by *superseding* — create `docs/adr/NNNN-slug.md` with the next number and a `Supersedes:` field; never edit an accepted ADR's Decision/Rationale/Rejected content in place (the sole permitted edit to a superseded file is its Status line, set to `Superseded by ADR-NNN`). Update the `docs/adr/README.md` index. Mirror material changes into the spec with a version bump of the spec itself. Predicate v0.1 remains historical and cannot carry draft v0.10 interval, policy, version-state, qualified-review, threshold-decision, derivation-fail-closed, publishing-profile, or source-evidence claims; do not mutate it. Successor predicate changes after first emission require a new predicate URI when validation or interpretation changes.
 4. **Before implementing anything**, re-verify §6 facts against current ecosystem documentation; several postdate nothing but all predate you.
 5. **Terminology discipline:** use the spec's §2 terms exactly (own trust vs effective trust; scope vs component; channel; accountable human). Drift here has already been the source of one caught bug (§5.8).
 6. **Honesty clauses are load-bearing:** P2 (accountability, not keystrokes) and P4 (degrade honestly) are commitments, not caveats. Any feature that quietly claims more than the evidence supports — e.g., inferring authorship the signatures can't prove, or waiving evidence where a differ is missing — violates the design's core defense against being discredited.
@@ -270,6 +272,13 @@ Instructions to any agent (or human) resuming this work:
     ecosystem profiles for Go modules, npm, Cargo, and Python/PyPI. PyPI
     projection is deferred until an injective mapping exists, and same-source
     promotion is separated from artifact-digest equality.
+27. **SLSA Source and source evidence binding:** spec #28 produced ADR-035 and
+    draft v0.10. SLSA Source is consumed through explicit source evidence
+    profiles with replay vs trusted-issuer modes, repository/resource and
+    subject matching, issuer authorization, digest algorithms, and
+    freshness/equivocation semantics. `release/v0.2` remains schema-frozen; v0.10
+    bindings use the declared extension map unless a future predicate URI adds
+    first-class fields.
 
 ---
 
@@ -291,3 +300,4 @@ Instructions to any agent (or human) resuming this work:
 | r12 | 2026-07-13 | Integrated executable-derivation hardening: ADR-033, draft v0.8, derivation claims ignored for portable trust re-leveling, Appendix A update, aggregation vectors, artifact table, and timeline 24. |
 | r13 | 2026-07-13 | Added signed v0.2 successor DSSE fixtures for #33, extended attestation skeleton validation to v0.2 predicates, updated conformance docs, artifact table, and timeline 25. |
 | r14 | 2026-07-13 | Integrated ecosystem publishing profile hardening: ADR-034, draft v0.9, narrowed resolver-routing claims, deferred non-injective PyPI projection, clarified same-source promotion, artifact table, external-facts table, and timeline 26. |
+| r15 | 2026-07-13 | Integrated SLSA Source/source-evidence hardening: ADR-035, draft v0.10, source evidence profiles, replay vs trusted-issuer modes, subject/resource matching, freshness/equivocation semantics, source-evidence vectors, artifact table, and timeline 27. |
