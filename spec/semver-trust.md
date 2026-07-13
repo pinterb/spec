@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # SemVer-Trust: Provenance-Scoped Trust Levels for Semantic Versioning
 
-**Draft v0.9**
+**Draft v0.10**
 **Status:** Design draft for review
 **Date:** 2026-07-13
 **Canonical home:** https://semver-trust.dev · https://github.com/semver-trust/spec
@@ -164,7 +164,7 @@ review.
 
 Review facts live outside git (platform PR approvals), so they MUST be captured into the provenance record at merge time:
 
-1. At merge, a trusted workflow (CI or merge queue) generates an in-toto attestation with predicate type `https://semver-trust.dev/review/v0.2` whose subjects are the merged commit SHAs, recording: reviewer canonical actors and their classes (human/agent), credential identities, approval verdicts, approval state, the PR/MR reference, covered revisions, final-revision or final-diff approval binding, repository and merge-context identity, merge strategy, and the verifier profiles used. Historical `review/v0.1` attestations remain verifiable under frozen legacy semantics, but they are not sufficient for v0.9 release-conformance claims.
+1. At merge, a trusted workflow (CI or merge queue) generates an in-toto attestation with predicate type `https://semver-trust.dev/review/v0.2` whose subjects are the merged commit SHAs, recording: reviewer canonical actors and their classes (human/agent), credential identities, approval verdicts, approval state, the PR/MR reference, covered revisions, final-revision or final-diff approval binding, repository and merge-context identity, merge strategy, and the verifier profiles used. Historical `review/v0.1` attestations remain verifiable under frozen legacy semantics, but they are not sufficient for v0.10 release-conformance claims.
 2. The attestation MUST be signed by the workflow's workload identity and stored per §8.2.
 3. A review is **qualified** for trust classification only if all of the following hold:
    - the verdict is `approved`;
@@ -401,7 +401,7 @@ Determined by the strongest available compatibility evidence, in order of prefer
 ### 6.2 Accountability threshold and blast radius
 
 The active policy's `threshold` is the minimum effective trust level eligible
-for the clean channel. The draft v0.9 baseline threshold is `T2`: before
+for the clean channel. The draft v0.10 baseline threshold is `T2`: before
 empirical validation of T1 efficacy (§12.1), independently agent-reviewed code
 does not satisfy the portable baseline clean profile. Policies MAY choose a
 different threshold, but any conformance claim MUST identify the threshold used.
@@ -697,11 +697,11 @@ review classes) MUST be preserved even though the tag carries only the scalar
 level (§3.2), and `supersedes` links promotion/demotion decisions.
 
 The successor release predicate type is `https://semver-trust.dev/release/v0.2`.
-It is the first release predicate allowed to claim v0.9/v0.8/v0.7/v0.6/v0.5/v0.4 trust-chain
+It is the first release predicate allowed to claim v0.10/v0.9/v0.8/v0.7/v0.6/v0.5/v0.4 trust-chain
 conformance. Its schema is `schemas/release-v0.2.json`; the matching review
 successor is `https://semver-trust.dev/review/v0.2`.
 
-A v0.9 release attestation MUST additionally bind the interval mode and resolved
+A v0.10 release attestation MUST additionally bind the interval mode and resolved
 `TO`; the resolved adoption boundary for adoption mode; the cryptographic
 identity of the accepted predecessor attestation for recurring mode; the active
 policy and role-separated trust-material digests that evaluated the interval;
@@ -716,8 +716,10 @@ that selected the active state. The release decision binding includes the
 claimed bump, semantic floor, accountability threshold, strategy, channel,
 ecosystem publishing profile when a registry projection is claimed, and
 supersession identity.
+When external source evidence is consumed, the predicate MUST also bind the
+source evidence profile and evidence identities as described in §8.3.
 Predicate v0.1 cannot express those continuity claims and MUST NOT be used to
-claim v0.9/v0.8/v0.7/v0.6/v0.5/v0.4 release conformance. This draft does not change existing v0.1 bytes
+claim v0.10/v0.9/v0.8/v0.7/v0.6/v0.5/v0.4 release conformance. This draft does not change existing v0.1 bytes
 or fixture expectations and assigns them no v0.4 continuity meaning. Because
 v0.1 did not encode its evaluator/specification profile, v0.2 successor
 attestations MUST bind explicit specification, predicate, evaluator,
@@ -728,7 +730,7 @@ new predicate URI and schema. Version-state identities in `release/v0.2` carry a
 canonicalization profile; v0.2 emission is blocked until that profile is
 implemented by emitters and reproducible by verifiers.
 
-Migration from v0.1 establishes a new authenticated v0.9 chain genesis. The
+Migration from v0.1 establishes a new authenticated v0.10 chain genesis. The
 bootstrap descriptor MAY independently pin a selected legacy `TO` as an included
 adoption boundary and a canonical clean legacy tag as a version predecessor when
 each satisfies §5.2 and §7.5. Neither binding implies the other: the version
@@ -743,6 +745,79 @@ it does not bind the active/candidate policy, trust, and version state.
 - Review attestations (§4.3), non-authoritative derivation metadata (§4.4),
   promotion evidence (§7.3), and release attestations (§8.1) share the storage
   and signing requirements.
+
+### 8.3 Source evidence profiles and SLSA Source integration
+
+SemVer-Trust may consume source-control evidence produced by another profile,
+including SLSA Source. SLSA Source v1.2 defines cross-system Source
+Verification Summary Attestations (Source VSAs), while leaving detailed Source
+Provenance formats to source-control systems because those systems differ in
+their workflows and evidence. SemVer-Trust therefore consumes SLSA Source as a
+profiled evidence input, not as a replacement for this specification's
+accountability, policy, version-ancestry, or release-decision rules.
+
+A **source evidence profile** MUST name:
+
+1. the source-control system or VSA issuer identity trusted for the profile;
+2. the accepted verification mode: `replay` or `trusted_issuer`;
+3. the repository identity canonicalization and resource URI matching rules;
+4. the source-revision digest algorithms and subject matching rules;
+5. the protected-reference, history-continuity, and source-review facts the
+   profile imports, and which SemVer-Trust fields consume them;
+6. the issuer authorization roots and purpose binding for source-evidence
+   attestations;
+7. the clock profile, evidence freshness rule, and verification instant; and
+8. the current-state or transparency mechanism used to detect hidden
+   successors, demotions, or equivocation when the policy requires freshness.
+
+In `replay` mode, the verifier validates the underlying source provenance and
+derives the imported facts itself. In `trusted_issuer` mode, the verifier
+validates a Source VSA or equivalent summary from an explicitly trusted issuer
+and accepts only the claims that the source evidence profile authorizes that
+issuer to summarize. A signature proves only that an issuer made a statement;
+it does not prove the statement's underlying facts unless the verifier either
+replays those facts or deliberately trusts that issuer for those facts.
+
+Subject and resource matching fail closed. A source-evidence attestation applies
+only when:
+
+- its repository resource URI canonicalizes to the release attestation's
+  repository identity under the bound repository-identity profile;
+- its subject digest identifies the same immutable source revision as the
+  release interval's resolved `TO` or an explicitly named source revision in the
+  evaluated target lineage;
+- its digest algorithm is permitted by the source evidence profile for that VCS;
+- any named references used for policy decisions are fully qualified and bound
+  to the matched revision at the verification instant; and
+- the attestation issuer is authorized for the source-evidence purpose under
+  injected trust material selected by bootstrap or accepted predecessor state.
+
+SemVer-Trust treats the following as directly reusable source facts when the
+profile supplies them with the bindings above: stable repository identity,
+immutable source-revision identity, protected named-reference membership,
+history continuity from a declared start revision, contemporaneous
+source-provenance generation, and final-revision/final-diff review evidence.
+SemVer-Trust remains responsible for canonical actor mapping, accountable-human
+counting, agent-independence semantics, scope flooring, propagation,
+compatibility and blast policy, threshold decisions, release intervals, policy
+transition, authenticated version ancestry, and supersession continuity.
+
+A v0.2 release predicate that uses external source evidence MUST bind the
+source evidence profile and evidence identities through the declared
+`predicate.extensions` map. Because `release/v0.2` has emitted bytes, changing
+its closed schema to require new top-level fields would require a new predicate
+URI. The extension binding is sufficient only when the profile identity,
+evidence digests, issuer roots, verification mode, and freshness/current-state
+mechanism are all present and covered by the signed predicate.
+
+If freshness matters to the release policy — for example, when a hidden
+superseding demotion would change an accepted release decision — the source
+evidence profile MUST define an authoritative current-state check or
+transparency proof. Absent that proof, verification is relative to the
+verifier-supplied accepted evidence set and MUST NOT claim globally latest
+state. Conflicting accepted source-evidence statements for the same repository,
+revision, profile, and verification instant are equivocation and MUST abort
+unless the profile defines a deterministic conflict-resolution rule.
 
 ## 9. Policy file
 
@@ -929,7 +1004,9 @@ decision selected for superseding re-evaluation:
 | Trust reset across skipped prereleases | Target lineage accumulates through re-cuts and advances from unpromoted targets; only complete authenticated reevaluation can raise it (§7.5) | Low once the complete accepted target lineage is available |
 | Squash/rebase provenance destruction | Forbid, or capture pre-squash provenance in merge attestation (§4.3) | Low |
 | Conflict-resolution smuggling in merge commits | Non-empty merge diffs classified as authored changes (§4.3.4) | Low |
-| Attestation store tampering | Signatures detect forgery; an authoritative current-state or transparency profile is needed to detect hidden successors/demotions (§8.2) | Moderate until §12.9 is resolved |
+| Attestation store tampering | Signatures detect forgery; an authoritative current-state or transparency profile is needed to detect hidden successors/demotions (§8.2, §8.3) | Moderate unless the active source/version profiles define freshness |
+| Source-evidence replay or issuer overreach | Source evidence must bind repository resource URI, immutable revision subject, digest algorithm, issuer authorization, verification mode, and freshness semantics (§8.3) | Low for replayed evidence; moderate when policy trusts an issuer summary without replay |
+| Source-evidence equivocation | Conflicting accepted source-evidence statements for the same repository/revision/profile/instant abort unless the profile defines deterministic conflict resolution (§8.3) | Low with transparency or authoritative current-state proofs; moderate otherwise |
 | Generator/toolchain compromise | Portable baseline verifiers do not execute repository-selected derivation commands or use derivation claims to raise trust (§4.4) | Low for baseline; future proof profiles must address toolchain compromise explicitly |
 | History rewrite on protected branch | Immutable predecessor/`TO` bindings and ancestry checks; rewrite ⇒ verification failure (§10) | Low |
 | Gaming promotion cascades | Promotion requires its own signed evidence and re-runs the full decision (§7.3) | Low |
@@ -938,7 +1015,7 @@ decision selected for superseding re-evaluation:
 
 1. **T1 efficacy.** Whether independent agent review provides enough corroboration for any clean-channel policy is unsettled; the baseline excludes it until evidence emerges.
 2. **Trust decay.** Should clean releases age (e.g., unpatched components lose standing), or is trust strictly monotonic per release? Current position: attestations are supersedable (§7.3.5), but no time-based decay is defined.
-3. **External dependencies.** Interface point to SLSA levels exists (§1.2); a mapping between SLSA build levels and T-levels is deliberately not defined in v0.1.
+3. **External dependencies.** Interface point to SLSA Build levels exists (§1.2); a mapping between SLSA Build levels and T-levels is deliberately not defined in v0.1. SLSA Source integration for first-party source evidence is defined in §8.3.
 4. **Cross-repo propagation.** Effective trust across repository boundaries (internal registries of first-party components) — likely via consuming the dependency's release attestation — is deferred.
 5. **Review-quality signals.** Approval latency, comment depth, and diff coverage of review are measurable but gameable; excluded from v0.1.
 6. **Naming.** *Resolved (v0.2):* the scheme is SemVer-Trust, hosted at `github.com/semver-trust`, with predicate-type URIs bound to `semver-trust.dev` (specification repository ADR-013). The `t` identifier is final. This entry is retained for numbering stability.
@@ -1135,6 +1212,18 @@ human               |   T2   |   T2   |   T3**
 - §7.3 clarifies that promotion promises identical source by default. Artifact
   digest equality is a separate reproducible-build promise, not a consequence
   of same-source promotion.
+
+## Appendix K: Changes from v0.9
+
+- §8.3 defines source evidence profiles and SLSA Source integration (ADR-035).
+  SLSA Source facts are consumed as profiled evidence inputs, either by replay
+  of source provenance or explicit trust in a Source VSA/equivalent issuer.
+- Source evidence matching now fails closed on repository-resource mismatch,
+  source-revision subject mismatch, disallowed digest algorithms, unauthorized
+  issuers, stale evidence, hidden demotion, and equivocation.
+- `release/v0.2` remains schema-frozen after first signed emission. Draft v0.10
+  source-evidence bindings use the declared `predicate.extensions` map; any
+  future required top-level source-evidence field requires a new predicate URI.
 
 ---
 

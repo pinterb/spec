@@ -2,15 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 """check-conformance.py — independent validation of the SemVer-Trust conformance vectors.
 
-Validates the core, release-range, policy-transition, version-ancestry,
-qualified-review, and cryptographic vector files against a second, independent implementation of the
-spec rules they encode (``spec/semver-trust.md`` §3.2-§3.3, §4.1-§4.2,
+Validates the core, release-range, policy-transition, version-ancestry, qualified-review,
+source-evidence, and cryptographic vector files against a second, independent implementation
+of the spec rules they encode (``spec/semver-trust.md`` §3.2-§3.3, §4.1-§4.2,
 §5.1-§5.4, §6.1-§6.4, §7.1-§7.5, §10, Appendix A). This is deliberately NOT the reference
 Go implementation, and it shares no code with ``scripts/check-drift.py`` — the
-SemVer comparator, level invariant, interval reachability, policy-transition,
-version-ancestry, and qualified-review rules, scope/floor/propagation arithmetic, and decision
-table are re-implemented here from first principles. Agreement between
-independent implementations is the point.
+SemVer comparator, level invariant, interval reachability, policy-transition, version-ancestry,
+qualified-review, and source-evidence rules, scope/floor/propagation arithmetic, and decision
+table are re-implemented here from first principles. Agreement between independent implementations
+is the point.
 
     uv run --group dev python3 scripts/check-conformance.py
 
@@ -47,6 +47,7 @@ RANGE = CONFORMANCE / "range.json"
 VERSION_ANCESTRY = CONFORMANCE / "version-ancestry.json"
 POLICY_TRANSITION = CONFORMANCE / "policy-transition.json"
 REVIEW_QUALIFICATION = CONFORMANCE / "review-qualification.json"
+SOURCE_EVIDENCE = CONFORMANCE / "source-evidence.json"
 PREDICATE_V02 = CONFORMANCE / "predicate-v0.2.json"
 SIGNATURE = CONFORMANCE / "crypto" / "signature-vectors.json"
 ATTESTATION = CONFORMANCE / "crypto" / "attestations" / "attestation-vectors.json"
@@ -61,6 +62,7 @@ VECTOR_FILES = (
     VERSION_ANCESTRY,
     POLICY_TRANSITION,
     REVIEW_QUALIFICATION,
+    SOURCE_EVIDENCE,
     PREDICATE_V02,
     SIGNATURE,
     ATTESTATION,
@@ -1467,6 +1469,84 @@ def check_review_qualification(vectors: list[dict]) -> None:
     )
 
 
+def _source_evidence_result(inputs: dict) -> tuple[bool, str | None]:
+    evidence = inputs["evidence"]
+    if not evidence:
+        return False, "missing_evidence"
+
+    mode = inputs["mode"]
+    repository = inputs["repository"]
+    release_to = inputs["release_to"]
+    allowed_algorithms = set(inputs["allowed_digest_algorithms"])
+    trusted_issuers = set(inputs["trusted_issuers"])
+
+    normalized: list[tuple] = []
+    for statement in evidence:
+        if statement["issuer"] not in trusted_issuers:
+            return False, "unauthorized_issuer"
+        if statement["resourceUri"] != repository:
+            return False, "resource_mismatch"
+        if not set(statement["subject"]).issubset(allowed_algorithms):
+            return False, "digest_algorithm_disallowed"
+        if statement["subject"] != release_to:
+            return False, "subject_mismatch"
+        if mode == "replay" and not statement.get("replayed", False):
+            return False, "replay_required"
+        if not statement.get("fresh", False):
+            return False, "stale_evidence"
+        normalized.append(
+            (
+                statement["issuer"],
+                statement["resourceUri"],
+                tuple(sorted(statement["subject"].items())),
+                tuple(statement.get("verifiedLevels", [])),
+            )
+        )
+
+    if inputs.get("current_state", {}).get("hidden_demotions"):
+        return False, "hidden_demotion"
+
+    by_identity: dict[tuple, tuple[str, ...]] = {}
+    for issuer, resource, subject, levels in normalized:
+        key = (issuer, resource, subject)
+        prior = by_identity.setdefault(key, levels)
+        if prior != levels:
+            return False, "equivocation"
+
+    return True, None
+
+
+def check_source_evidence(vectors: list[dict]) -> None:
+    check("source-evidence-group-nonempty", bool(vectors))
+    expected_reasons = {
+        "resource_mismatch",
+        "subject_mismatch",
+        "digest_algorithm_disallowed",
+        "unauthorized_issuer",
+        "replay_required",
+        "stale_evidence",
+        "hidden_demotion",
+        "equivocation",
+    }
+    seen_reasons = set()
+    for vector in vectors:
+        accepted, reason = _source_evidence_result(vector["inputs"])
+        expected = vector["expected"]
+        if reason:
+            seen_reasons.add(reason)
+        check(
+            f"source-evidence-{vector['id']}",
+            accepted == expected["accepted"] and reason == expected["reason"],
+            f"computed accepted={accepted} reason={reason}, vector says {expected}",
+        )
+    missing_reasons = expected_reasons - seen_reasons
+    check(
+        "source-evidence-negative-coverage",
+        not missing_reasons,
+        f"missing source-evidence negative reasons: {sorted(missing_reasons)}",
+    )
+
+
 def check_version_ancestry(doc: dict) -> None:
     vectors = [
         vector for vector in doc.get("vectors", []) if vector.get("kind") == "version_ancestry"
@@ -1867,6 +1947,7 @@ def main() -> int:
         check_version_ancestry(docs[VERSION_ANCESTRY.name])
         check_policy_transitions(docs[POLICY_TRANSITION.name])
         check_review_qualification(docs[REVIEW_QUALIFICATION.name]["vectors"])
+        check_source_evidence(docs[SOURCE_EVIDENCE.name]["vectors"])
         check_predicate_v02_instances(docs[PREDICATE_V02.name]["vectors"])
         check_attestations(docs[ATTESTATION.name])
         check_format_gate()
