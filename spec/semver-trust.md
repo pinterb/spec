@@ -1124,9 +1124,9 @@ human               |   T2   |   T2   |   T3**
 ## Appendix J: Changes from v0.8
 
 - §7.1 and §7.4 narrow the prerelease-routing claim (ADR-034, superseding
-  ADR-001 and ADR-011). SemVer-Trust prereleases provide native ordering
-  friction, but resolver behavior is ecosystem-specific and does not replace
-  attestation verification.
+  ADR-001 and revising ADR-011's registry-projection clause). SemVer-Trust
+  prereleases provide native ordering friction, but resolver behavior is
+  ecosystem-specific and does not replace attestation verification.
 - §7.4 replaces unconditional registry projections with ecosystem publishing
   profiles for Go modules, npm, Cargo, and Python/PyPI. npm trust prereleases
   must not be published under `latest` unless ordinary installation is intended;

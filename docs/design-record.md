@@ -84,7 +84,7 @@ status.
 | ADR-008 | Unverifiable ≠ T0: verification failures abort |
 | ADR-009 | Promotion: same SHA, new attestation; cascades; supersession over mutation |
 | ADR-010 | Trust channel generalizes (and should not mix with) rc |
-| ADR-011 | Language-agnostic core; ecosystem plugins; lossy registry projections (superseded by ADR-034) |
+| ADR-011 | Language-agnostic core; ecosystem plugins; lossy registry projections (registry-projection clause revised by ADR-034) |
 | ADR-012 | External dependencies out of scope for v0.1 |
 | ADR-013 | Naming and repository topology |
 | ADR-014 | Licensing and control strategy |
