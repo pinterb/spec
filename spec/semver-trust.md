@@ -71,6 +71,9 @@ A trust level is a scalar `T0`–`T3` counting **independent accountable humans*
 | **T3** | Two distinct accountable humans: canonical human author actor ≠ canonical human reviewer actor. | Authored and independently reviewed by different humans. |
 
 Levels are an accountability ordering, not a risk ordering (Principle 6, §1.1): policy maps levels plus evidence to risk; the levels themselves claim only the count of independent accountable humans.
+For T3, "distinct" means distinct canonical human actors under the issuer's
+active actor policy. The level does not prove natural-person uniqueness beyond
+that policy, review diligence, non-collusion, or review quality.
 
 ### 3.2 Level assignment (normative)
 
@@ -105,6 +108,9 @@ An agent review qualifies as *independent* only if all of the following hold:
 3. The review produces a signed qualified review attestation (§4.3) with verdict `approved`, bound to the final revision or final diff that was merged, naming the commit SHA(s), reviewing agent/model, and evidence of the separate execution context.
 
 Implementations SHOULD prefer a different model family for the reviewer. This spec makes no empirical claim that T1 review approaches human review efficacy — self-preference bias in model-reviewing-model settings is an open research question. T1 exists as a distinct rung so that policy can price it separately from both T0 and T2.
+The separate-execution evidence recorded for T1 is issuer-asserted unless a
+source-control or workload profile gives it stronger, independently verifiable
+semantics; consumers SHOULD weight T1 corroboration accordingly.
 
 ## 4. Commit-level provenance
 
@@ -839,6 +845,7 @@ decision selected for superseding re-evaluation:
 |---|---|---|
 | Forged provenance trailers | Trailers advisory; identity class from verified signature governs; conflicts floor to agent (§3.2, §4.1) | Low |
 | Identity laundering (agent under human key) | Accountability semantics stated normatively (§4.2); agent trailers required by policy; CI agents forced onto machine identities; spot audits | **Accepted & documented** — T2/T3 mean "human stands behind it," not "human typed it" |
+| Actor-map laundering | Actor map is policy/trust material selected by bootstrap or accepted predecessor state; meta-path and policy-transition rules protect actor-map changes (§4.2, §5.4, §9) | T3 means two distinct canonical human actors under the issuer's identity policy, not independently proven natural-person distinctness or non-collusion |
 | Review rubber-stamping | Evidence ceiling still applies (differ proofs, coverage); distinct-identity requirement for T3; audit trails in attestations | Moderate — review *quality* is out of scope by design |
 | Payload hidden in "trivial" commit | No de-minimis exception (§5.1); only verified derivations bypass flooring | Low |
 | Risk laundering via shared libs | Transitive propagation over the workspace graph (§5.3) | Low |

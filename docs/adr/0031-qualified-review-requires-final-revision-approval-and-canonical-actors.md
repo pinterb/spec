@@ -36,7 +36,10 @@ separate execution context with no shared conversational or working state.
 The `review/v0.2` successor predicate had not emitted bytes before this
 decision, so it is refined in place before first emission to carry the required
 actor, approval-state, coverage, merge-context, and agent-independence facts.
-Future changes after emission follow ADR-030's strict-URI rule.
+This deliberately resolves ADR-030's pre-#32 warning that omitted facts would
+require `review/v0.3`: the operative freeze point is first emission, and that
+freeze point had not occurred. Future changes after emission follow ADR-030's
+strict-URI rule.
 **Rationale:** Raw credential comparison overcounts accountability. One person
 can hold multiple keys, rotate keys, or review from multiple platform accounts;
 without a canonical actor layer, a verifier can mistake operational hygiene or
