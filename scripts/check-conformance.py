@@ -50,6 +50,7 @@ POLICY_TRANSITION = CONFORMANCE / "policy-transition.json"
 REVIEW_QUALIFICATION = CONFORMANCE / "review-qualification.json"
 PUBLISHING_PROFILE = CONFORMANCE / "publishing-profile.json"
 SOURCE_EVIDENCE = CONFORMANCE / "source-evidence.json"
+VERSION_STATE_CANON = CONFORMANCE / "version-state-canonicalization.json"
 PREDICATE_V02 = CONFORMANCE / "predicate-v0.2.json"
 SIGNATURE = CONFORMANCE / "crypto" / "signature-vectors.json"
 ATTESTATION = CONFORMANCE / "crypto" / "attestations" / "attestation-vectors.json"
@@ -66,6 +67,7 @@ VECTOR_FILES = (
     REVIEW_QUALIFICATION,
     PUBLISHING_PROFILE,
     SOURCE_EVIDENCE,
+    VERSION_STATE_CANON,
     PREDICATE_V02,
     SIGNATURE,
     ATTESTATION,
@@ -1651,6 +1653,66 @@ def check_source_evidence(vectors: list[dict]) -> None:
     )
 
 
+# ADR-036: version-state identities are digested by the
+# semver-trust-version-state-json v0.2 profile — RFC 8785 (JCS) over the
+# carried-forward version-state object, hashed with SHA-256. For this object
+# domain (ASCII keys/strings, non-negative integers, bool, null, arrays, nested
+# objects — no floats), JCS is byte-identical to a sorted-key, minimally
+# separated, non-ASCII-escaping JSON dump, so this independent oracle recomputes
+# the digest without a JCS dependency and gates the vectors' pinned values.
+def _version_state_jcs(state: dict) -> bytes:
+    return json.dumps(state, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
+
+
+def check_version_state_canonicalization(vectors: list[dict]) -> None:
+    group = [v for v in vectors if v.get("kind") == "version_state_canonicalization"]
+    check("version-state-canonicalization-group-nonempty", bool(group))
+    known = set()
+    for vec in group:
+        state = vec["inputs"]["state"]
+        want = vec["expected"]["digest"]["sha256"]
+        got = hashlib.sha256(_version_state_jcs(state)).hexdigest()
+        check(
+            f"version-state-canonicalization-{vec['id']}",
+            got == want,
+            f"digest mismatch: computed {got}, vector pins {want}",
+        )
+        # The profile name and version are bound in the digested object so a
+        # future profile over the same facts cannot collide (domain separation).
+        check(
+            f"version-state-canonicalization-profile-bound-{vec['id']}",
+            state.get("profile") == "semver-trust-version-state-json"
+            and state.get("version") == "0.2",
+            "canonical object must bind the profile name and version",
+        )
+        known.add("sha256:" + want)
+
+    # The hash chain is real: every non-null predecessor_state_digest MUST equal
+    # a state digest pinned in this suite, not an arbitrary value. Otherwise a
+    # vector could claim to chain to a predecessor while carrying a digest
+    # recomputed over a fabricated link.
+    saw_genesis = False
+    saw_chained = False
+    for vec in group:
+        pred = vec["inputs"]["state"].get("predecessor_state_digest")
+        if pred is None:
+            saw_genesis = True
+            continue
+        saw_chained = True
+        check(
+            f"version-state-canonicalization-chain-link-{vec['id']}",
+            pred in known,
+            f"predecessor_state_digest {pred} matches no state digest pinned in the suite",
+        )
+    check(
+        "version-state-canonicalization-covers-genesis-and-chain",
+        saw_genesis and saw_chained,
+        "vectors must exercise both a genesis (null predecessor) and a chained state",
+    )
+
+
 def check_version_ancestry(doc: dict) -> None:
     vectors = [
         vector for vector in doc.get("vectors", []) if vector.get("kind") == "version_ancestry"
@@ -2097,6 +2159,7 @@ def main() -> int:
         check_review_qualification(docs[REVIEW_QUALIFICATION.name]["vectors"])
         check_publishing_profiles(docs[PUBLISHING_PROFILE.name]["vectors"])
         check_source_evidence(docs[SOURCE_EVIDENCE.name]["vectors"])
+        check_version_state_canonicalization(docs[VERSION_STATE_CANON.name]["vectors"])
         check_predicate_v02_instances(docs[PREDICATE_V02.name]["vectors"])
         check_attestations(docs[ATTESTATION.name])
         check_format_gate()
