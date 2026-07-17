@@ -1669,8 +1669,7 @@ def _version_state_jcs(state: dict) -> bytes:
 def check_version_state_canonicalization(vectors: list[dict]) -> None:
     group = [v for v in vectors if v.get("kind") == "version_state_canonicalization"]
     check("version-state-canonicalization-group-nonempty", bool(group))
-    saw_genesis = False
-    saw_chained = False
+    known = set()
     for vec in group:
         state = vec["inputs"]["state"]
         want = vec["expected"]["digest"]["sha256"]
@@ -1688,10 +1687,25 @@ def check_version_state_canonicalization(vectors: list[dict]) -> None:
             and state.get("version") == "0.2",
             "canonical object must bind the profile name and version",
         )
-        if state.get("predecessor_state_digest") is None:
+        known.add("sha256:" + want)
+
+    # The hash chain is real: every non-null predecessor_state_digest MUST equal
+    # a state digest pinned in this suite, not an arbitrary value. Otherwise a
+    # vector could claim to chain to a predecessor while carrying a digest
+    # recomputed over a fabricated link.
+    saw_genesis = False
+    saw_chained = False
+    for vec in group:
+        pred = vec["inputs"]["state"].get("predecessor_state_digest")
+        if pred is None:
             saw_genesis = True
-        else:
-            saw_chained = True
+            continue
+        saw_chained = True
+        check(
+            f"version-state-canonicalization-chain-link-{vec['id']}",
+            pred in known,
+            f"predecessor_state_digest {pred} matches no state digest pinned in the suite",
+        )
     check(
         "version-state-canonicalization-covers-genesis-and-chain",
         saw_genesis and saw_chained,

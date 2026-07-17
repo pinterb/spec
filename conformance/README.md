@@ -18,8 +18,9 @@ and tag grammar** (§7.1, §7.2), **aggregation** (§5.1–§5.2 scope partition
 with §4.4 derivation claims ignored for portable re-leveling), **transitive propagation** (§5.3, including SCC
 collapse), **release intervals and predecessor continuity** (§5.2), **policy transitions** (§5.4),
 **authenticated version ancestry** (§7.5), **qualified review** (§4.3), **release decisions** (§6.1–§6.4
-with §7.1 encoding), **ecosystem publishing profiles** (§7.4), and **source
-evidence profiles** (§8.3). Every step of the spec's Appendix A worked
+with §7.1 encoding), **ecosystem publishing profiles** (§7.4), **source
+evidence profiles** (§8.3), and **version-state canonicalization** (§8.1,
+ADR-036). Every step of the spec's Appendix A worked
 example is reproduced as a vector (ids containing `appendix-a`).
 Cryptographic verification fixtures —
 vendored test keys, the allowed-signers registry, deterministically built fixture repositories, and SSH
@@ -41,6 +42,7 @@ capability limitation (SSH-only, with fail-closed behavior on other key families
 | `review-qualification.json` | Qualified-review, canonical-actor, final-revision, and agent-independence vectors | Apache 2.0 |
 | `publishing-profile.json` | Ecosystem publishing-profile and registry-projection vectors | Apache 2.0 |
 | `source-evidence.json` | Source-evidence profile binding vectors for SLSA Source-style evidence | Apache 2.0 |
+| `version-state-canonicalization.json` | Version-state digest vectors: a carried-forward state object and its `semver-trust-version-state-json` v0.2 digest (JCS + SHA-256), incl. the hash-chain link (ADR-036) | Apache 2.0 |
 | `crypto/` | Cryptographic fixtures: vendored test keys, allowed-signers registry, deterministic fixture-repo builder, SSH signature vectors (see `crypto/README.md`) | Apache 2.0 |
 | `check-conformance.py` (in `../scripts/`) | Independent validator for these files (self-check, not the harness) | Apache 2.0 |
 | `LICENSE` | Verbatim Apache 2.0 text, vendored so copies carry their license | Apache 2.0 |
@@ -98,7 +100,7 @@ Every vector, regardless of file, has these common fields:
 | Field | Type | Meaning |
 |---|---|---|
 | `id` | string | Stable, unique identifier, e.g. `levels/matrix/agent-none`. Never reused or repurposed. |
-| `kind` | string | Selects the consumption rule: `matrix`, `classify`, `precedence`, `grammar`, `scope_partition`, `scope_floor`, `meta_path`, `propagation`, `release_range`, `version_ancestry`, `policy_transition`, `review_qualification`, `publishing_profile`, or `decision`; some file-selected suites use their own specialized discriminator. |
+| `kind` | string | Selects the consumption rule: `matrix`, `classify`, `precedence`, `grammar`, `scope_partition`, `scope_floor`, `meta_path`, `propagation`, `release_range`, `version_ancestry`, `policy_transition`, `review_qualification`, `publishing_profile`, `version_state_canonicalization`, or `decision`; some file-selected suites use their own specialized discriminator. |
 | `description` | string | Human-readable intent; editorial, not asserted. |
 | `spec` | string | Back-reference to the governing spec section, e.g. `§3.2`. Never empty. |
 
@@ -363,6 +365,21 @@ release decision.
 | `expected.accepted` | bool | Whether the source evidence may be consumed. |
 | `expected.reason` | string or null | Stable failure category, or null when accepted. |
 
+### `version-state-canonicalization.json` — kind: `version_state_canonicalization`
+
+The `semver-trust-version-state-json` v0.2 digest profile (§8.1, ADR-036): the
+accepted, carried-forward version state serialized with RFC 8785 (JSON
+Canonicalization Scheme) and hashed with SHA-256, the digest a `release/v0.2`
+predicate binds as a `stateIdentity`. Each state binds its predecessor's digest
+as a hash-chain link, so the suite must exercise both a genesis (null
+predecessor) and a chained state.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `inputs.state` | object | The exact carried-forward version-state object that is canonicalized. Binds `profile`/`version` (domain separation), `component`/`tag_prefix`, `baseline` (null or immutable lineage tag + raw/peeled OIDs + source identity), `baseline_core`/`target_core`/`target_bump`, `clean_accepted`, `target_lineage[]`, `iterations`, `pending_corrective_floor`, and `predecessor_state_digest`. |
+| `inputs.state.predecessor_state_digest` | string or null | The parent state's digest as `sha256:<hex>` (the hash-chain link), or `null` at genesis. Every non-null value MUST equal a state digest pinned elsewhere in the suite. |
+| `expected.digest` | object | The digestSet the emitter produces and the verifier reproduces: `{ "sha256": "<hex>" }` of the JCS bytes. |
+
 ### `decision.json` — kind: `decision`
 
 The §6.4 baseline decision/rendering kernel with §6.1 semantic floor, §6.2
@@ -428,6 +445,10 @@ false (§1.1 honest degradation).
   authorization, repository/resource matching, subject matching, digest
   algorithm policy, replay vs trusted-issuer mode, freshness, hidden demotion,
   and equivocation.
+- **`version_state_canonicalization`** — canonicalize `inputs.state` with RFC
+  8785 (JCS) and SHA-256; assert the digest equals `expected.digest.sha256`, the
+  `profile`/`version` domain-separation binding, and that every non-null
+  `predecessor_state_digest` matches a state digest pinned in the suite.
 - **`predicate-v02`** — validate unsigned v0.2 successor predicate instances,
   including one positive `release/v0.2` source-evidence extension binding.
 - **`decision`** — run the §6 baseline decision function; assert channel, bump, and the exact
